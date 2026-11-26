@@ -243,9 +243,8 @@ struct CrtcRequest {
     /// enabled output right of the layout.
     position: Option<MonitorPosition>,
     /// `None` preserves the CRTC's current rotation, so a user or session
-    /// `xrandr --rotate` survives policy passes. Mirrors pin `ROTATE0`
-    /// because their 1:1 scanout math assumes unrotated framebuffer
-    /// coordinates.
+    /// `xrandr --rotate` survives policy passes. Mirrors request the
+    /// rotation used to match the source's framebuffer region.
     rotation: Option<randr::Rotation>,
 }
 
@@ -435,6 +434,29 @@ fn rotation_swaps_dimensions(rotation: randr::Rotation) -> bool {
     rotation.intersects(randr::Rotation::ROTATE90 | randr::Rotation::ROTATE270)
 }
 
+fn rotated_size(size: Size, rotation: randr::Rotation) -> Size {
+    if rotation_swaps_dimensions(rotation) {
+        Size::new(size.h, size.w)
+    } else {
+        size
+    }
+}
+
+fn free_crtc(
+    snapshot: &RandrSnapshot,
+    output: &RandrOutput,
+    exclude: randr::Crtc,
+    rotation: Option<randr::Rotation>,
+) -> Option<randr::Crtc> {
+    output.info.crtcs.iter().copied().find(|&candidate| {
+        candidate != exclude
+            && snapshot.crtcs.get(&candidate).is_some_and(|info| {
+                info.outputs.is_empty()
+                    && rotation.is_none_or(|rotation| info.rotations.contains(rotation))
+            })
+    })
+}
+
 /// Whether `current` already scans out `output` at this position, mode and
 /// rotation.
 fn crtc_shows(
@@ -460,16 +482,6 @@ fn plan_crtc_change(
     request: &CrtcRequest,
 ) -> Option<CrtcChange> {
     let output = snapshot.output(name)?;
-    let free_crtc = |exclude: randr::Crtc| {
-        output.info.crtcs.iter().copied().find(|&candidate| {
-            candidate != exclude
-                && snapshot
-                    .crtcs
-                    .get(&candidate)
-                    .is_some_and(|info| info.outputs.is_empty())
-        })
-    };
-
     if !request.enable {
         let current_crtc = output.info.crtc;
         if current_crtc == 0 {
@@ -505,7 +517,7 @@ fn plan_crtc_change(
     let mut crtc = if output.info.crtc != 0 {
         output.info.crtc
     } else {
-        free_crtc(0)?
+        free_crtc(snapshot, output, 0, request.rotation)?
     };
     let current = snapshot.crtcs.get(&crtc);
     let mode = select_output_mode(
@@ -518,16 +530,15 @@ fn plan_crtc_change(
         .rotation
         .or_else(|| current.map(|current| current.rotation))
         .unwrap_or(randr::Rotation::ROTATE0);
-    let (width, height) = if rotation_swaps_dimensions(rotation) {
-        (i32::from(mode.height), i32::from(mode.width))
-    } else {
-        (i32::from(mode.width), i32::from(mode.height))
-    };
+    let framebuffer_size = rotated_size(
+        Size::new(i32::from(mode.width), i32::from(mode.height)),
+        rotation,
+    );
     let known = snapshot.active_rects();
     let position = match &request.position {
         Some(position) => position
             .resolve(
-                Size::new(width, height),
+                framebuffer_size,
                 known.iter().map(|(name, rect)| (name.as_str(), *rect)),
             )
             .unwrap_or_default(),
@@ -546,12 +557,14 @@ fn plan_crtc_change(
         if crtc == output.info.crtc && crtc_shows(current, x, y, mode.id, rotation, output.id) {
             return None;
         }
-        if current.outputs.len() > 1 {
+        if current.outputs.len() > 1
+            || (request.rotation.is_some() && !current.rotations.contains(rotation))
+        {
             // Move this output to a free compatible CRTC before changing its
             // mode or location, so the other heads keep scanning out.
-            let Some(spare) = free_crtc(crtc) else {
+            let Some(spare) = free_crtc(snapshot, output, crtc, Some(rotation)) else {
                 log::warn!(
-                    "cannot reconfigure output {name}: it shares CRTC {crtc} and no free compatible CRTC exists"
+                    "cannot reconfigure output {name}: no free CRTC compatible with the requested rotation"
                 );
                 return None;
             };
@@ -567,8 +580,8 @@ fn plan_crtc_change(
         rotation,
         outputs: vec![output.id],
         extent: Some(Point::new(
-            position.x.saturating_add(width),
-            position.y.saturating_add(height),
+            position.x.saturating_add(framebuffer_size.w),
+            position.y.saturating_add(framebuffer_size.h),
         )),
     })
 }
@@ -899,15 +912,41 @@ fn apply_mirror_configs(
     // snapshot answers every source and mode lookup.
     let snapshot = randr.snapshot();
     let connected = snapshot.connected_names();
-    let source_rects: HashMap<String, Rect> = snapshot.active_rects().into_iter().collect();
+    let sources: HashMap<_, _> = snapshot
+        .active()
+        .map(|(output, rect)| {
+            let rotation = snapshot.crtcs[&output.info.crtc].rotation;
+            (output.name.clone(), (rect, rotation))
+        })
+        .collect();
     let glued: Vec<(String, CrtcRequest)> = policy
         .mirrors
         .iter()
         .filter(|(mirror, _)| connected.contains(*mirror))
         .filter_map(|(mirror, target)| {
-            let rect = *source_rects.get(&target.source)?;
+            let &(rect, source_rotation) = sources.get(target.source.as_str())?;
+            let output = snapshot.output(mirror)?;
+            let current = snapshot.crtcs.get(&output.info.crtc);
+            let preferred_rotation =
+                if current.is_some_and(|crtc| {
+                    crtc.rotation == source_rotation
+                        || (crtc.outputs.len() == 1 && crtc.rotations.contains(source_rotation))
+                }) || free_crtc(&snapshot, output, output.info.crtc, Some(source_rotation))
+                    .is_some()
+                {
+                    source_rotation
+                } else {
+                    randr::Rotation::ROTATE0
+                };
             let modes = snapshot.modes_of(mirror);
-            let request = mirror_policy_for(policy, mirror, &target.source, rect, &modes);
+            let request = mirror_policy_for(
+                policy,
+                mirror,
+                &target.source,
+                rect,
+                preferred_rotation,
+                &modes,
+            );
             Some((mirror.clone(), request))
         })
         .collect();
@@ -929,7 +968,7 @@ fn apply_mirror_configs(
             policy
                 .mirrors
                 .source_of(name)
-                .is_none_or(|source| !source_rects.contains_key(source))
+                .is_none_or(|source| !sources.contains_key(source))
         })
         .cloned()
         .collect();
@@ -1005,6 +1044,7 @@ fn mirror_policy_for(
     mirror: &str,
     source: &str,
     source_rect: Rect,
+    preferred_rotation: randr::Rotation,
     mirror_modes: &[OutputMode],
 ) -> CrtcRequest {
     let config = policy.effective(mirror);
@@ -1019,37 +1059,54 @@ fn mirror_policy_for(
         );
     }
 
-    let clone_region = |width: i32, height: i32, position: Point| CrtcRequest {
+    let clone_region = |mode: &OutputMode, rotation, position: Point| CrtcRequest {
         enable: true,
         mode: ModeRequest::Match(MonitorModeRequest::size(crate::types::Size::new(
-            width, height,
+            mode.width,
+            mode.height,
         ))),
         position: Some(MonitorPosition::Absolute(position)),
-        // The 1:1 crop math below assumes unrotated framebuffer coordinates.
-        rotation: Some(randr::Rotation::ROTATE0),
+        rotation: Some(rotation),
     };
 
     // Rung 1: an exact mode clones the source rectangle. The panel's scaler
     // fills a non-native mode, so this mirrors the source scaled.
     let rect = source_rect;
-    let (source_width, source_height) = (rect.w, rect.h);
-    if mirror_modes
-        .iter()
-        .any(|mode| mode.width == source_width && mode.height == source_height)
-    {
-        return clone_region(source_width, source_height, Point::new(rect.x, rect.y));
+    let rotations = [preferred_rotation, randr::Rotation::ROTATE0];
+    for rotation in rotations {
+        let size = rotated_size(rect.size(), rotation);
+        if let Some(mode) = mirror_modes
+            .iter()
+            .find(|mode| mode.width == size.w && mode.height == size.h)
+        {
+            return clone_region(mode, rotation, Point::new(rect.x, rect.y));
+        }
     }
 
     // Rung 2: X11 cannot scale, so the closest lossless approximation is a
     // centered 1:1 crop of the framebuffer region the source occupies.
-    if let Some(crop_mode) = find_same_aspect_crop_mode(mirror_modes, source_width, source_height) {
-        let (crop_width, crop_height) = (crop_mode.width, crop_mode.height);
+    let best_crop = rotations
+        .into_iter()
+        .filter_map(|rotation| {
+            let size = rotated_size(rect.size(), rotation);
+            let mode = find_same_aspect_crop_mode(mirror_modes, size.w, size.h)?;
+            let unused_area = i64::from(rect.w) * i64::from(rect.h)
+                - i64::from(mode.width) * i64::from(mode.height);
+            Some((unused_area, mode, rotation))
+        })
+        .min_by_key(|(unused_area, _, _)| *unused_area);
+    let (source_width, source_height) = (rect.w, rect.h);
+    if let Some((_, mode, rotation)) = best_crop {
+        let Size {
+            w: crop_width,
+            h: crop_height,
+        } = rotated_size(Size::new(mode.width, mode.height), rotation);
         log::warn!(
             "mirror output {mirror} has no {source_width}x{source_height} mode for source {source}; running {crop_width}x{crop_height} as an unscaled center crop (X11 mirrors cannot scale)"
         );
         return clone_region(
-            crop_width,
-            crop_height,
+            mode,
+            rotation,
             Point::new(
                 rect.x + (source_width - crop_width) / 2,
                 rect.y + (source_height - crop_height) / 2,
@@ -1210,6 +1267,7 @@ mod refresh_tests {
     use crate::output_mirror::MonitorPolicy;
     use crate::types::{MonitorPosition, Point, Rect};
     use std::collections::{HashMap, HashSet};
+    use x11rb::protocol::randr;
 
     fn lid_snapshot(panel_active: bool, dock_active: bool) -> super::RandrSnapshot {
         use x11rb::protocol::randr;
@@ -1773,6 +1831,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             Rect::new(0, 0, 1920, 1080),
+            randr::Rotation::ROTATE0,
             &[mode(1920, 1080, 60_000)],
         );
         assert_eq!(policy, CrtcRequest::DISABLE);
@@ -1788,9 +1847,50 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             Rect::new(1920, 40, 2560, 1440),
+            randr::Rotation::ROTATE0,
             &modes,
         );
         assert_eq!(policy, clone_region(2560, 1440, 1920, 40));
+    }
+
+    #[test]
+    fn portrait_source_uses_a_rotated_landscape_mirror_mode() {
+        let mut snapshot = lid_snapshot(true, false);
+        snapshot.crtcs.get_mut(&2).unwrap().rotations =
+            randr::Rotation::ROTATE0 | randr::Rotation::ROTATE90;
+        let source = Rect::new(40, 20, 1080, 1920);
+        let request = mirror_policy_for(
+            &mirror_configs([]),
+            "DP-1",
+            "eDP-1",
+            source,
+            randr::Rotation::ROTATE90,
+            &snapshot.modes_of("DP-1"),
+        );
+
+        let change = super::plan_crtc_change(&snapshot, "DP-1", &request).unwrap();
+        assert_eq!(change.mode, 1);
+        assert_eq!(change.rotation, randr::Rotation::ROTATE90);
+        assert_eq!(
+            change.extent,
+            Some(Point::new(source.right(), source.bottom()))
+        );
+    }
+
+    #[test]
+    fn portrait_source_centers_a_smaller_rotated_mirror_mode() {
+        let request = mirror_policy_for(
+            &mirror_configs([]),
+            "DP-1",
+            "eDP-1",
+            Rect::new(40, 20, 1080, 1920),
+            randr::Rotation::ROTATE90,
+            &[mode(1280, 720, 60_000)],
+        );
+
+        let mut expected = clone_region(1280, 720, 220, 340);
+        expected.rotation = Some(randr::Rotation::ROTATE90);
+        assert_eq!(request, expected);
     }
 
     #[test]
@@ -1806,6 +1906,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             Rect::new(1920, 40, 2560, 1440),
+            randr::Rotation::ROTATE0,
             &modes,
         );
         assert_eq!(policy, clone_region(1920, 1080, 2240, 220));
@@ -1822,6 +1923,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             Rect::new(0, 0, 1600, 900),
+            randr::Rotation::ROTATE0,
             &[mode(1920, 1080, 60_000)],
         );
         assert_eq!(policy, CrtcRequest::DISABLE);
@@ -1832,6 +1934,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             Rect::new(0, 0, 2560, 1440),
+            randr::Rotation::ROTATE0,
             &[mode(1920, 1200, 60_000)],
         );
         assert_eq!(policy, CrtcRequest::DISABLE);
@@ -1857,6 +1960,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             source,
+            randr::Rotation::ROTATE0,
             &[mode(1280, 720, 60_000), mode(2560, 1440, 60_000)],
         );
         assert_eq!(policy, clone_region(2560, 1440, 0, 0));
@@ -1866,6 +1970,7 @@ mod refresh_tests {
             "DP-1",
             "eDP-1",
             source,
+            randr::Rotation::ROTATE0,
             &[mode(1280, 720, 60_000)],
         );
         assert_eq!(policy, clone_region(1280, 720, 640, 360));
