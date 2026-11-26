@@ -558,7 +558,7 @@ mod tests {
             entered.presentation_rect(),
             Some(Rect::new(0, 0, 1920, 1080))
         );
-        model.sync_client_geometry(win, Rect::new(0, 0, 1920, 1080));
+        model.record_client_geometry(win, Rect::new(0, 0, 1920, 1080));
         let fake = model.toggle_fake_fullscreen(win).unwrap();
         assert_eq!(fake.presentation_rect(), Some(original));
         assert!(model.client(win).unwrap().mode().is_fake_fullscreen());

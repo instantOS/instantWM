@@ -137,7 +137,7 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
         .map_element(element, (moved.x, moved.y), false);
     let shown = Rect::new(20, 0, initial.w, initial.h);
     state.wm.core.state.config.animations.enabled = true;
-    state.wm.core.state.model.sync_client_geometry(win, shown);
+    state.wm.core.state.model.record_client_geometry(win, shown);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,

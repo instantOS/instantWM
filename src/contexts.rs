@@ -334,7 +334,12 @@ impl<'a> WmCtx<'a> {
         crate::layouts::sync_z_order(self);
     }
 
-    pub(crate) fn set_geometry_impl(
+    /// Apply a client rectangle to the backend, recording logical moves in the
+    /// model.
+    ///
+    /// This is the context-level backend application primitive;
+    /// [`crate::model::WmModel::record_client_geometry`] mutates the model alone.
+    pub(crate) fn apply_client_geometry(
         &mut self,
         win: WindowId,
         rect: Rect,
@@ -354,7 +359,7 @@ impl<'a> WmCtx<'a> {
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
-                x11.core.state.model.sync_client_geometry(win, rect);
+                x11.core.state.model.record_client_geometry(win, rect);
                 if let Some(client) = x11.core.state.model.client(win) {
                     crate::backend::x11::focus::configure(
                         &x11.x11,
@@ -366,7 +371,10 @@ impl<'a> WmCtx<'a> {
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
-                    self.core_mut().state.model.sync_client_geometry(win, rect);
+                    self.core_mut()
+                        .state
+                        .model
+                        .record_client_geometry(win, rect);
                 }
                 self.resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {
@@ -508,12 +516,13 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Run the shared visibility plan through the backend's native
-    /// concealment mechanism (see `crate::client::visibility`).
+    /// Apply the shared window-state plan through the backend's native
+    /// presentation path (see `crate::client::visibility`).
     ///
-    /// X11 keeps invisible windows mapped but parked off-screen; Wayland
-    /// maps/unmaps surfaces.
-    pub fn apply_visibility_plan(&mut self) {
+    /// On X11 this maps or parks windows and reconfigures every visible client
+    /// from the plan's geometry. Wayland maps/unmaps surfaces and lets the
+    /// compositor read geometry from the model.
+    pub fn apply_window_state_plan(&mut self) {
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::visibility::apply_visibility(ctx),
             WmCtx::Wayland(ctx) => crate::backend::wayland::visibility::apply_visibility(ctx),

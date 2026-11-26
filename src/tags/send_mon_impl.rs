@@ -152,11 +152,12 @@ fn transfer_floating_to_monitor(
             ..client.geo
         })
     {
-        ctx.core_mut().state.model.sync_client_geometry(win, rect);
+        ctx.core_mut().state.model.record_client_geometry(win, rect);
     }
 
-    // Raise so the window is immediately visible on the new monitor. The layout
-    // refresh for the affected monitors is handled by `transfer_client`.
+    // Raise so the window is immediately visible on the new monitor. The
+    // window-state layout pass for the affected monitors is queued by
+    // `transfer_client`.
     ctx.raise_client(win);
     ctx.flush();
 }
@@ -165,8 +166,8 @@ fn transfer_floating_to_monitor(
 mod tests {
     use super::*;
     use crate::model::WmModel;
-    use crate::test_support::add_selected_client;
-    use crate::types::{Client, ClientMode, Monitor};
+    use crate::test_support::{MonitorBuilder, TestWm, add_selected_client};
+    use crate::types::{Client, ClientMode, Monitor, TagMask};
 
     fn model_with_selected_client(mode: ClientMode, monitor_count: usize) -> WmModel {
         let mut model = WmModel::new();
@@ -247,5 +248,49 @@ mod tests {
                 strategy: SendToMonitorStrategy::DirectTransfer,
             })
         );
+    }
+
+    #[test]
+    fn floating_transfer_records_target_geometry_and_queues_layout() {
+        let mut wm = TestWm::new(crate::backend::WaylandBackendData::default());
+        let tag = TagMask::single(1).unwrap();
+        let source = wm.core.state.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1000, 800))
+                .tag_count(1)
+                .selected_tags(tag)
+                .build(),
+        );
+        let target = wm.core.state.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(1000, 0, 1200, 900))
+                .tag_count(1)
+                .selected_tags(tag)
+                .build(),
+        );
+        wm.core.state.model.monitors.set_selected(source);
+
+        let win = WindowId(42);
+        let mut client = Client {
+            win,
+            geo: Rect::new(200, 80, 400, 300),
+            mode: ClientMode::floating(),
+            ..Client::default()
+        };
+        client.tags = tag;
+        add_selected_client(&mut wm.core.state.model, source, client);
+
+        send_to_monitor(&mut wm.test_ctx(), MonitorDirection::Next);
+
+        let view = wm
+            .core
+            .state
+            .model
+            .client_view(win)
+            .expect("transferred client must stay managed");
+        assert_eq!(view.monitor.id(), target);
+        assert_eq!(view.client.geo, Rect::new(1240, 90, 400, 300));
+        assert!(wm.core.work.layout.is_pending());
+        assert!(wm.core.work.layout.is_urgent());
     }
 }

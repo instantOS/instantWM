@@ -272,8 +272,8 @@ pub fn transfer_client(
 
     // Refresh the two monitors whose client sets changed. Floating transfers do
     // not arrange (`move_client_to_monitor` sets `needs_arrange = false`), so
-    // this unconditional refresh is what actually updates the bar/geometry for
-    // moved floating clients; callers must not assume the queue below covers it.
+    // this unconditional queue is what projects the moved geometry on X11;
+    // callers must not assume the `needs_arrange` queue below covers it.
     ctx.core_mut()
         .queue_layout_for_monitor_urgent(outcome.source_monitor);
     ctx.core_mut()

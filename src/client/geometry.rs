@@ -617,7 +617,7 @@ mod tests {
             }
         ));
 
-        model.sync_client_geometry(win, Rect::new(10, 40, 900, 700));
+        model.record_client_geometry(win, Rect::new(10, 40, 900, 700));
         assert_eq!(model.client(win).unwrap().saved_floating_placement(), None);
 
         model
@@ -625,7 +625,7 @@ mod tests {
             .unwrap()
             .set_placement(crate::types::ClientPlacement::Floating);
         let floating = Rect::new(100, 100, 700, 500);
-        model.sync_client_geometry(win, floating);
+        model.record_client_geometry(win, floating);
         let saved = model
             .client(win)
             .unwrap()
@@ -636,7 +636,7 @@ mod tests {
 
         let free_placement = saved;
         model.client_mut(win).unwrap().snap_status = SnapPosition::Left;
-        model.sync_client_geometry(win, Rect::new(0, 30, 500, 770));
+        model.record_client_geometry(win, Rect::new(0, 30, 500, 770));
         assert_eq!(
             model.client(win).unwrap().saved_floating_placement(),
             Some(free_placement)
@@ -663,7 +663,7 @@ mod tests {
         client.set_placement(crate::types::ClientPlacement::Floating);
         assert!(model.add_client(monitor_id, client));
 
-        model.sync_client_geometry(win, restored);
+        model.record_client_geometry(win, restored);
 
         let client = model.client(win).unwrap();
         assert_eq!(client.geo, restored);

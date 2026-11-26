@@ -1,4 +1,5 @@
-//! X11-specific client visibility: mapping/unmapping windows and WM_STATE transitions.
+//! X11-specific window-state projection: mapping/unmapping windows, WM_STATE
+//! transitions, and geometry for visible clients.
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};

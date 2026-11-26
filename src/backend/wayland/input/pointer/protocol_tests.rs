@@ -454,7 +454,7 @@ fn game_lock_recovers_after_leaving_and_returning_to_a_tag() {
         .monitor_mut(monitor)
         .unwrap()
         .set_selected_tags(TagMask::single(2).unwrap());
-    f.state.ctx().apply_visibility_plan();
+    f.state.ctx().apply_window_state_plan();
     f.state.sync_space();
     f.refresh();
     assert_eq!(f.events.unlocks, 1);
@@ -475,7 +475,7 @@ fn game_lock_recovers_after_leaving_and_returning_to_a_tag() {
         .monitor_mut(monitor)
         .unwrap()
         .set_selected_tags(TagMask::single(1).unwrap());
-    f.state.ctx().apply_visibility_plan();
+    f.state.ctx().apply_window_state_plan();
     f.state.sync_space();
     f.state.focus_window(win, None);
     let root = f

@@ -156,7 +156,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                 let _ = crate::floating::scratchpad_show_name(&mut ctx, &name);
             }
             WmCommand::SetWindowGeometry { win, rect } => {
-                state.wm.core.state.model.sync_client_geometry(win, rect);
+                state.wm.core.state.model.record_client_geometry(win, rect);
             }
             WmCommand::RequestSpaceSync => {
                 state.wm.core.work.layout.mark_all();
@@ -293,7 +293,7 @@ fn handle_committed_size_observation(
         return;
     }
     if let Some(rect) = committed_rect {
-        state.wm.core.state.model.sync_client_geometry(win, rect);
+        state.wm.core.state.model.record_client_geometry(win, rect);
     }
 }
 
@@ -619,7 +619,7 @@ fn position_new_wayland_floating_window(
     else {
         return;
     };
-    state.model.sync_client_geometry(win, rect);
+    state.model.record_client_geometry(win, rect);
 
     let Some(element) = element else {
         return;
