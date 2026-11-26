@@ -1,6 +1,6 @@
 pkgbase = instantwm-bin
 	pkgdesc = A tiling window manager for X11 and Wayland (prebuilt binary)
-	pkgver = 0.8.2
+	pkgver = 0.9.0
 	pkgrel = 1
 	url = https://instantos.io
 	arch = x86_64
@@ -45,11 +45,11 @@ pkgbase = instantwm-bin
 	depends = xdg-desktop-portal-wlr
 	optdepends = instantmenu: global shortcut approval and configuration dialogs
 	optdepends = xdg-desktop-portal: application global shortcuts
-	provides = instantwm=1:0.8.2
+	provides = instantwm=1:0.9.0
 	conflicts = instantwm
-	source = instantwm-0.8.2.tar.gz::https://github.com/instantOS/instantWM/archive/refs/tags/v0.8.2.tar.gz
-	source = https://github.com/instantOS/instantWM/releases/download/v0.8.2/instantwm-x86_64-unknown-linux-gnu-v0.8.2.tgz
-	sha256sums = 2bc38fa3ccb943db2656c748184e14d5fad30774771fd0d2e5f4137e4b4fc879
-	sha256sums = 193bd58e96a8c448ab2082777947b149b8985e1919cdf0f4acf5cddf87608669
+	source = instantwm-0.9.0.tar.gz::https://github.com/instantOS/instantWM/archive/refs/tags/v0.9.0.tar.gz
+	source = https://github.com/instantOS/instantWM/releases/download/v0.9.0/instantwm-x86_64-unknown-linux-gnu-v0.9.0.tgz
+	sha256sums = SKIP
+	sha256sums = SKIP
 
 pkgname = instantwm-bin

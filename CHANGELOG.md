@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/instantOS/instantWM/compare/v0.8.2...v0.9.0) - 2026-11-26
+
+### Added
+
+- configure placement preview animations
+- audit placement hitboxes and add Wayland overlay
+- reflow tiled windows dropped on their own edges
+
+### Changed
+
+- clarify client geometry application
+- bound automatic tree insertion search
+- return Result from keybind merging
+- rename legacy WM globals to state
+- rename Client.name to Client.title
+- remove always-Some Option wrappers
+
+### Fixed
+
+- route modal dialog input correctly
+- resolve monitor positions after their anchors
+- honor floating placement and decoration requests
+- preserve and reuse keyboard placement targets
+- detect an already running window manager
+- send size with pending maximize configure
+- restore persisted client tags across restarts
+- handle RandR rotation in output geometry
+- fail on invalid keybinds instead of skipping
+- keep self-window placement local to the parent split
+- suppress redundant synthetic pointer motion
+
+### Other
+
+- add flake support
+- publish instantwm packages to the AUR
+- generate Arch metadata as builder outside checkout
+- bump stuff
+- update per review, add nixos module
+- CodeRabbit suggestions
+- fix split hitbox oddity
+- clippy
+- Merge branch 'dev' of ufr:~/stuff/instantWM into dev
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- Merge pull request #295 from Pebor/main
+
 ## [0.8.2](https://github.com/instantOS/instantWM/compare/v0.8.1...v0.8.2) - 2026-11-23
 
 ### Changed
