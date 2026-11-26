@@ -341,7 +341,7 @@ mod tests {
         };
         let entered = apply_xwayland_policy(&mut model, win, update(true)).unwrap();
         assert!(entered.layout_changed());
-        model.sync_client_geometry(win, output_rect);
+        model.record_client_geometry(win, output_rect);
         let exited = apply_xwayland_policy(&mut model, win, update(false)).unwrap();
         assert!(exited.layout_changed());
 

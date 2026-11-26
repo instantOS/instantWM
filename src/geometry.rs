@@ -262,10 +262,10 @@ pub(crate) fn move_resize(
             if !ctx.has_inflight_animation_to(win, final_rect) {
                 // The new immediate geometry supersedes the old target. Drop
                 // its presentation state without configuring the obsolete
-                // size first; set_geometry_impl applies the new target below.
+                // size first; apply_client_geometry applies the new target below.
                 let _ = ctx.take_current_animation_rect(win, Instant::now());
             }
-            ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
+            ctx.apply_client_geometry(win, final_rect, GeometryApplyMode::Logical);
         }
         MoveResizeMode::AnimateTo | MoveResizeMode::AnimateFrom(_) => {
             // Repeated integer coordinates (subpixel motion or edge snapping)
@@ -299,7 +299,7 @@ pub(crate) fn move_resize(
                     .client(win)
                     .is_some_and(|client| client.geo != final_rect)
                 {
-                    ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
+                    ctx.apply_client_geometry(win, final_rect, GeometryApplyMode::Logical);
                 }
                 return;
             }
@@ -307,7 +307,7 @@ pub(crate) fn move_resize(
             let animated = ctx.core().state.config.animations.enabled;
 
             if !animated || options.duration.is_zero() {
-                ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
+                ctx.apply_client_geometry(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
 
@@ -316,7 +316,7 @@ pub(crate) fn move_resize(
                 || (final_rect.w - from.w).abs() > DISTANCE_THRESHOLD
                 || (final_rect.h - from.h).abs() > DISTANCE_THRESHOLD;
             if !dist_moved {
-                ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
+                ctx.apply_client_geometry(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
 
@@ -324,7 +324,7 @@ pub(crate) fn move_resize(
                 ctx.core_mut()
                     .state
                     .model
-                    .sync_client_geometry(win, final_rect);
+                    .record_client_geometry(win, final_rect);
             }
 
             let duration = ctx

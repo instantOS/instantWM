@@ -118,13 +118,14 @@ impl WmModel {
             .sum()
     }
 
-    /// Synchronize a client's authoritative geometry and floating placement.
+    /// Record a client's authoritative geometry and floating placement.
     ///
-    /// Backends call this after the WM knows the rectangle that actually
-    /// applies. A normal floating client records that rectangle as its saved
+    /// This only mutates the model; it does not configure any backend. Callers
+    /// either have already applied `rect` or rely on the next layout pass to
+    /// project it. A normal floating client records `rect` as its saved
     /// placement unless it is snapped; other client modes only update current
     /// geometry.
-    pub fn sync_client_geometry(&mut self, win: WindowId, rect: Rect) {
+    pub fn record_client_geometry(&mut self, win: WindowId, rect: Rect) {
         let Some(monitor) = self.client_owner_mut(win) else {
             return;
         };

@@ -38,7 +38,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
         ctx.reset_mode();
     }
 
-    ctx.apply_visibility_plan();
+    ctx.apply_window_state_plan();
     if let Some(id) = monitor_id {
         arrange_monitor(ctx, id, animated);
     } else {

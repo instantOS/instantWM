@@ -324,7 +324,7 @@ fn tick_x11_animations(wm: &mut Wm) {
     };
     for (win, rect) in finished_targets {
         let mut wmctx = ctx.wm_ctx();
-        wmctx.set_geometry_impl(win, rect, GeometryApplyMode::Logical);
+        wmctx.apply_client_geometry(win, rect, GeometryApplyMode::Logical);
     }
 }
 

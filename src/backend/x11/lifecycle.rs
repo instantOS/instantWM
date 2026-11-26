@@ -177,7 +177,7 @@ pub fn manage(
             transient_for,
             position_is_explicit,
         ) {
-            ctx.core.state.model.sync_client_geometry(window, rect);
+            ctx.core.state.model.record_client_geometry(window, rect);
         }
         ctx.x11.raise_window_visual_only(window);
     }
@@ -216,7 +216,7 @@ pub fn manage(
         x: geo.x + 2 * ctx.core().state.derived.display.width,
         ..geo
     };
-    ctx.set_geometry_impl(window, offscreen, GeometryApplyMode::VisualOnly);
+    ctx.apply_client_geometry(window, offscreen, GeometryApplyMode::VisualOnly);
     arrange(&mut ctx, Some(monitor_id), ArrangeAnimation::Configured);
     if !initially_hidden {
         ctx.map_window(window);

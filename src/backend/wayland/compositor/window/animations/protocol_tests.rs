@@ -370,7 +370,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
         .core
         .state
         .model
-        .sync_client_geometry(win, constrained);
+        .record_client_geometry(win, constrained);
     assert_eq!(
         state
             .wm
@@ -411,7 +411,12 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     // preserving its spatial animation. Only the final intent may be sent.
     for size in [(480, 270), (320, 180)] {
         let target = Rect::new(floating.x, floating.y, size.0, size.1);
-        state.wm.core.state.model.sync_client_geometry(win, target);
+        state
+            .wm
+            .core
+            .state
+            .model
+            .record_client_geometry(win, target);
         state.native.set_window_target_rect(
             &state.wm.core.state,
             win,
@@ -483,7 +488,12 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     let element = state.native.find_window(win).unwrap().clone();
 
     let target = Rect::new(100, 100, 640, 480);
-    state.wm.core.state.model.sync_client_geometry(win, target);
+    state
+        .wm
+        .core
+        .state
+        .model
+        .record_client_geometry(win, target);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
@@ -528,7 +538,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         .core
         .state
         .model
-        .sync_client_geometry(win, hidden_target);
+        .record_client_geometry(win, hidden_target);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
@@ -570,7 +580,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         .core
         .state
         .model
-        .sync_client_geometry(win, obsolete);
+        .record_client_geometry(win, obsolete);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
@@ -592,7 +602,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         .core
         .state
         .model
-        .sync_client_geometry(win, replacement);
+        .record_client_geometry(win, replacement);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
@@ -618,7 +628,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         .core
         .state
         .model
-        .sync_client_geometry(win, obsolete);
+        .record_client_geometry(win, obsolete);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
@@ -1340,7 +1350,12 @@ fn check_tiled_constrained_commit(reply_before_completion: bool) {
 
     // Grow to the right so the far edge travels farther and x anchors Far.
     let target = Rect::new(100, 100, 1000, 600);
-    state.wm.core.state.model.sync_client_geometry(win, target);
+    state
+        .wm
+        .core
+        .state
+        .model
+        .record_client_geometry(win, target);
     state.native.set_window_target_rect(
         &state.wm.core.state,
         win,
