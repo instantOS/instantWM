@@ -155,10 +155,10 @@ fn pump(
     }
 }
 
-fn connect_native_window(
+fn connect_pending_native_window(
     event_loop: &mut smithay::reexports::calloop::EventLoop<'static, WaylandState>,
     state: &mut WaylandState,
-) -> (Connection, EventQueue<NativeClient>, NativeClient, WindowId) {
+) -> (Connection, EventQueue<NativeClient>, NativeClient) {
     let (client_socket, server_socket) = UnixStream::pair().unwrap();
     state
         .native
@@ -188,6 +188,16 @@ fn connect_native_window(
     client.surface = Some(surface.clone());
     surface.commit();
     pump(event_loop, state, &conn, &mut queue, &mut client);
+
+    // Leave the toplevel pending: the caller decides whether to register it.
+    (conn, queue, client)
+}
+
+fn connect_native_window(
+    event_loop: &mut smithay::reexports::calloop::EventLoop<'static, WaylandState>,
+    state: &mut WaylandState,
+) -> (Connection, EventQueue<NativeClient>, NativeClient, WindowId) {
+    let (conn, queue, client) = connect_pending_native_window(event_loop, state);
 
     // Register without a buffer so this test can exercise real configure
     // dispatch independently of a renderer. Model geometry supplies the
@@ -890,6 +900,60 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
             .last()
             .unwrap()
             .contains(&(xdg_toplevel::State::Maximized as u32))
+    );
+}
+
+#[test]
+fn pending_toplevel_maximize_configure_carries_work_area_size() {
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let monitor = state.wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .rect(Rect::new(0, 0, 1000, 800), Rect::new(0, 0, 1000, 700))
+            .bar(0, false)
+            .tag_count(1)
+            .selected_tags(TagMask::single(1).unwrap())
+            .build(),
+    );
+    state.wm.core.state.model.monitors.set_selected(monitor);
+
+    let (conn, mut queue, mut client) = connect_pending_native_window(&mut event_loop, &mut state);
+    client.toplevel.as_ref().unwrap().set_maximized();
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+
+    assert_eq!(client.sizes.last().copied(), Some((1000, 700)));
+    assert!(
+        client
+            .states
+            .last()
+            .unwrap()
+            .contains(&(xdg_toplevel::State::Maximized as u32))
+    );
+}
+
+#[test]
+fn pending_toplevel_fullscreen_configure_carries_monitor_size() {
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let monitor = state.wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .rect(Rect::new(0, 0, 1000, 800), Rect::new(0, 0, 1000, 700))
+            .bar(0, false)
+            .tag_count(1)
+            .selected_tags(TagMask::single(1).unwrap())
+            .build(),
+    );
+    state.wm.core.state.model.monitors.set_selected(monitor);
+
+    let (conn, mut queue, mut client) = connect_pending_native_window(&mut event_loop, &mut state);
+    client.toplevel.as_ref().unwrap().set_fullscreen(None);
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+
+    assert_eq!(client.sizes.last().copied(), Some((1000, 800)));
+    assert!(
+        client
+            .states
+            .last()
+            .unwrap()
+            .contains(&(xdg_toplevel::State::Fullscreen as u32))
     );
 }
 
