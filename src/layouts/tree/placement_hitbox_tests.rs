@@ -22,7 +22,12 @@ fn hit_testing_uses_the_slots_that_size_hints_actually_display() {
     assert!(!tree.bounds(area)[&windows[1]].contains_point(point));
 
     let mut session = new_session(&tree, windows[0], area, 0.34, &minimums);
-    assert!(session.preview_point(Point::new(70, point.y)).is_none());
+    // The stale unconstrained slot point falls on the source's own edge, which
+    // is now a same-window placement target rather than an invalid drop.
+    assert_eq!(
+        session.resolve(Point::new(70, point.y)).map(|(key, _)| key),
+        Some((windows[0], Some(Side::Right)))
+    );
     assert_eq!(
         session
             .hitboxes(area, None)
@@ -41,6 +46,50 @@ fn hit_testing_uses_the_slots_that_size_hints_actually_display() {
         .unwrap();
     assert_eq!(keyboard.position, point);
     assert_eq!(pointer.target, keyboard);
+}
+
+#[test]
+fn source_edges_are_targets_but_its_centre_stays_neutral() {
+    let windows = [WindowId(1), WindowId(2)];
+    let area = Rect::new(0, 0, 800, 600);
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::MasterStack, &windows, 1);
+    let source_rect = tree.bounds(area)[&windows[0]];
+    assert_eq!(source_rect, Rect::new(0, 0, 400, 600));
+
+    let mut session = new_session(&tree, windows[0], area, 0.34, &HashMap::new());
+    let hitboxes = session.hitboxes(area, None);
+    assert!(
+        hitboxes
+            .spans
+            .iter()
+            .any(|span| span.target == windows[0] && span.side == Some(Side::Top)),
+        "the source's top edge must expose a same-window drop target"
+    );
+    assert!(
+        !hitboxes
+            .spans
+            .iter()
+            .any(|span| span.target == windows[0] && span.rect.contains_point(source_rect.center())),
+        "the source centre must remain an explicit no-op"
+    );
+    assert!(
+        session.preview_point(source_rect.center()).is_none(),
+        "a centre drop on the source must not preview a second placement"
+    );
+
+    let top = Point::new(source_rect.center().x, source_rect.y + 1);
+    let preview = session.preview_point(top).unwrap();
+    assert_eq!(preview, Rect::new(0, 0, 800, 300));
+    let applied = new_session(&tree, windows[0], area, 0.34, &HashMap::new())
+        .into_plan(top)
+        .unwrap()
+        .into_tree();
+    assert_eq!(applied.bounds(area)[&windows[0]], preview);
+    assert_eq!(
+        applied.bounds(area)[&windows[1]],
+        Rect::new(0, 300, 800, 300)
+    );
 }
 
 #[test]

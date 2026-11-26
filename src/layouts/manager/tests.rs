@@ -1569,6 +1569,56 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
 }
 
 #[test]
+fn tiled_drag_over_its_own_edge_reflows_instead_of_doing_nothing() {
+    let mut wm = wayland_wm();
+    wm.core.state.config.animations.enabled = false;
+    let win = WindowId(931);
+    let other = WindowId(932);
+    let monitor_id = add_tiled_monitor(&mut wm, &[win, other], Rect::new(0, 0, 800, 600));
+    apply_preset(&mut wm, monitor_id, Preset::MasterStack, &[win, other]);
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
+
+    let original = begin_tiled_move(&mut wm, win);
+    assert_eq!(original, Rect::new(0, 0, 400, 600));
+    let point = Point::new(original.center().x, original.y + 1);
+    assert!(crate::mouse::drag::apply_active_drag_motion(
+        &mut wm.test_ctx(),
+        point
+    ));
+    let preview = super::preview_tree_at_point(&mut wm.core.state, win, point)
+        .expect("the source's own top edge must be a placement target");
+    assert_eq!(preview, Rect::new(0, 0, 800, 300));
+    assert_eq!(
+        wm.core.state.model.client(win).unwrap().geo,
+        original,
+        "the drag preview must not move the source before release"
+    );
+
+    assert!(crate::mouse::drag::active_drag_finish(
+        &mut wm.test_ctx(),
+        MouseButton::Left,
+        crate::types::ModMask::NONE
+    ));
+    let client = wm.core.state.model.client(win).unwrap();
+    let actual = Rect::new(
+        client.geo.x,
+        client.geo.y,
+        client.geo.w + 2 * client.border_width,
+        client.geo.h + 2 * client.border_width,
+    );
+    assert_eq!(actual, preview);
+    assert_eq!(client.mode(), ClientMode::tiled());
+    assert_eq!(
+        wm.core.state.model.client(other).unwrap().geo,
+        Rect::new(0, 300, 800, 300)
+    );
+}
+
+#[test]
 fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
     let mut wm = wayland_wm();
     wm.core.state.config.animations.enabled = false;

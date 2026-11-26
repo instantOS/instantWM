@@ -46,6 +46,40 @@ pub(super) fn sane_edge_fraction(edge_fraction: f64) -> f64 {
     finite_clamp(edge_fraction, 0.05, 0.49, 0.34)
 }
 
+/// Remove `source` from `scope` while leaving the removed window's share as
+/// empty space instead of letting the surviving branch absorb it. A plain
+/// tree removal promotes the last sibling into a collapsed parent and would
+/// silently resize every other leaf in that branch.
+fn remaining_after_self_removal(
+    scope: &Split,
+    path: &[(&Split, usize)],
+    source: WindowId,
+    source_share: f64,
+) -> Option<Node> {
+    let (_, branch_index) = *path.first()?;
+    let mut children = Vec::with_capacity(scope.children.len());
+    for (index, child) in scope.children.iter().enumerate() {
+        if index != branch_index {
+            children.push(child.clone());
+            continue;
+        }
+        if path.len() == 1 {
+            debug_assert!(matches!(child.node, Node::Window(window) if window == source));
+            continue;
+        }
+        let Node::Split(child_scope) = &child.node else {
+            continue;
+        };
+        let child_share = source_share / child.weight;
+        let remaining = remaining_after_self_removal(child_scope, &path[1..], source, child_share)?;
+        children.push(WeightedNode {
+            node: remaining,
+            weight: child.weight * (1.0 - child_share),
+        });
+    }
+    make_split(scope.id, scope.axis, children)
+}
+
 /// Shared keyboard/pointer pipeline: drop candidates that leave the source
 /// without a slot, then keep one representative per distinct topology.
 pub(super) fn normalized_plans(
@@ -132,6 +166,93 @@ impl LayoutTree {
     pub(super) fn swapped(&self, first: WindowId, second: WindowId) -> Option<LayoutTree> {
         let mut candidate = self.clone();
         candidate.swap_windows(first, second).then_some(candidate)
+    }
+
+    /// Candidate trees for dropping `source` on the matching edge of its own
+    /// rectangle. Each enclosing split contributes one scope, ordered from the
+    /// outermost ancestor to the immediate parent: the outside edge of a band
+    /// moves the window to that edge of the broad layout, while the inner edge
+    /// only reflows the window's local container.
+    ///
+    /// The source keeps its share of the edited scope's area, so a same-window
+    /// edge drop moves or re-splits the window without resizing it. Candidates
+    /// that reproduce the current topology are omitted.
+    pub(super) fn self_edge_candidates(&self, source: WindowId, side: Side) -> Vec<LayoutTree> {
+        let Some(root) = self.root.as_ref() else {
+            return Vec::new();
+        };
+        let mut path = Vec::new();
+        if !path_to(root, source, &mut path) {
+            return Vec::new();
+        }
+
+        let mut seen = HashSet::from([placement_topology(root)]);
+        let mut candidates = Vec::with_capacity(path.len());
+        for (index, (scope, _)) in path.iter().enumerate() {
+            let scope = *scope;
+            // A window nested below this scope still owns exactly this share
+            // of the scope's area, so re-splitting keeps its size stable.
+            let source_weight = path[index..]
+                .iter()
+                .map(|(split, branch_index)| split.children[*branch_index].weight)
+                .product::<f64>();
+            let Some(remaining) =
+                remaining_after_self_removal(scope, &path[index..], source, source_weight)
+            else {
+                continue;
+            };
+
+            let mut next_split_id = self.next_split_id;
+            let axis = side.axis();
+            let split_id = if axis == scope.axis {
+                scope.id
+            } else {
+                take_split_id(&mut next_split_id)
+            };
+            let (leading, trailing, leading_weight, trailing_weight) = if side.is_leading() {
+                (
+                    Node::Window(source),
+                    remaining,
+                    source_weight,
+                    1.0 - source_weight,
+                )
+            } else {
+                (
+                    remaining,
+                    Node::Window(source),
+                    1.0 - source_weight,
+                    source_weight,
+                )
+            };
+            let Some(replacement) = make_split(
+                split_id,
+                axis,
+                vec![
+                    WeightedNode {
+                        node: leading,
+                        weight: leading_weight,
+                    },
+                    WeightedNode {
+                        node: trailing,
+                        weight: trailing_weight,
+                    },
+                ],
+            ) else {
+                continue;
+            };
+            let candidate = Self::from_root(
+                root.clone()
+                    .replace_key(NodeKey::Split(scope.id), replacement),
+                next_split_id,
+            );
+            let Some(topology) = candidate.root.as_ref().map(placement_topology) else {
+                continue;
+            };
+            if seen.insert(topology) {
+                candidates.push(candidate);
+            }
+        }
+        candidates
     }
 
     /// Every tree placing `source` on `side` of `target`, with ancestor scopes
