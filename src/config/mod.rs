@@ -93,22 +93,31 @@ pub fn load_startup_config(backend: crate::backend::BackendKind) -> EffectiveCon
 
 /// Resolve a parsed user configuration into the complete effective snapshot.
 /// This is the sole user-to-runtime conversion boundary.
+///
+/// Invalid keybinds are configuration errors: every invalid entry is collected
+/// (with its table and index) and returned as one error instead of being
+/// skipped, so a reload cannot silently install a partially bound config.
 pub fn resolve_config(
     mut theme: config_toml::UserConfig,
     backend: crate::backend::BackendKind,
 ) -> Result<EffectiveConfig, String> {
     let layout = theme.layout.validated()?;
     theme.fonts = theme.fonts.validated()?;
-    let keys = keybind_config::merge_keybinds(
+    let mut keybind_diagnostics = Vec::new();
+    let (keys, diagnostics) = keybind_config::merge_keybinds(
         keybindings::default_keybinds(backend),
         &theme.keybinds,
         KeybindOrigin::User,
+        "keybinds",
     );
-    let desktop_keybinds = keybind_config::merge_keybinds(
+    keybind_diagnostics.extend(diagnostics);
+    let (desktop_keybinds, diagnostics) = keybind_config::merge_keybinds(
         keybindings::get_desktop_keybinds(),
         &theme.desktop_keybinds,
         KeybindOrigin::User,
+        "desktop_keybinds",
     );
+    keybind_diagnostics.extend(diagnostics);
 
     let mut modes = HashMap::new();
 
@@ -116,14 +125,18 @@ pub fn resolve_config(
     let merge_mode = |spec: Option<&config_toml::ModeSpec>,
                       default_desc: &str,
                       default_transient: bool,
-                      default_keybinds: Vec<Key>|
+                      default_keybinds: Vec<Key>,
+                      context: &str,
+                      diagnostics: &mut Vec<String>|
      -> ModeConfig {
         if let Some(spec) = spec {
-            let keybinds = keybind_config::merge_keybinds(
+            let (keybinds, errors) = keybind_config::merge_keybinds(
                 default_keybinds,
                 &spec.keybinds,
                 KeybindOrigin::User,
+                context,
             );
+            diagnostics.extend(errors);
             ModeConfig {
                 description: spec
                     .description
@@ -144,12 +157,26 @@ pub fn resolve_config(
     // Special handling for default modes: prefix and desktop
     modes.insert(
         "prefix".to_string(),
-        merge_mode(theme.modes.get("prefix"), "prefix", true, Vec::new()),
+        merge_mode(
+            theme.modes.get("prefix"),
+            "prefix",
+            true,
+            Vec::new(),
+            "modes.prefix.keybinds",
+            &mut keybind_diagnostics,
+        ),
     );
 
     modes.insert(
         "desktop".to_string(),
-        merge_mode(theme.modes.get("desktop"), "desktop", false, Vec::new()),
+        merge_mode(
+            theme.modes.get("desktop"),
+            "desktop",
+            false,
+            Vec::new(),
+            "modes.desktop.keybinds",
+            &mut keybind_diagnostics,
+        ),
     );
 
     let mut placement_mode = merge_mode(
@@ -157,6 +184,8 @@ pub fn resolve_config(
         "place window",
         false,
         keybindings::get_tree_placement_keybinds(),
+        "modes.placement.keybinds",
+        &mut keybind_diagnostics,
     );
     // Placement has a transactional apply/cancel lifecycle; treating one
     // command as transient would discard that transaction mid-navigation.
@@ -174,8 +203,13 @@ pub fn resolve_config(
         {
             continue;
         }
-        let keybinds =
-            keybind_config::merge_keybinds(Vec::new(), &spec.keybinds, KeybindOrigin::User);
+        let (keybinds, diagnostics) = keybind_config::merge_keybinds(
+            Vec::new(),
+            &spec.keybinds,
+            KeybindOrigin::User,
+            &format!("modes.{name}.keybinds"),
+        );
+        keybind_diagnostics.extend(diagnostics);
         modes.insert(
             name.clone(),
             ModeConfig {
@@ -184,6 +218,10 @@ pub fn resolve_config(
                 keybinds,
             },
         );
+    }
+
+    if !keybind_diagnostics.is_empty() {
+        return Err(keybind_diagnostics.join("\n"));
     }
 
     let bar = theme.bar.validated()?;
@@ -413,6 +451,33 @@ mod resolution_tests {
             &bound[0].action,
             KeyAction::Named(NamedAction::Spawn(argv)) if argv == &["alacritty"]
         ));
+    }
+
+    #[test]
+    fn invalid_keybinds_fail_resolution_with_their_mode_context() {
+        let user: config_toml::UserConfig = toml::from_str(
+            r#"
+            [[keybinds]]
+            key = "nokey"
+            action = "zoom"
+
+            [modes.resize]
+            [[modes.resize.keybinds]]
+            key = "p"
+            action = "does_not_exist"
+            "#,
+        )
+        .unwrap();
+
+        let error = match resolve_config(user, crate::backend::BackendKind::Wayland) {
+            Ok(_) => panic!("invalid keybinds must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("keybinds[0]"), "{error}");
+        assert!(error.contains("nokey"), "{error}");
+        assert!(error.contains("modes.resize.keybinds[0]"), "{error}");
+        assert!(error.contains("does_not_exist"), "{error}");
     }
 
     #[test]

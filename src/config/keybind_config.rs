@@ -159,13 +159,20 @@ fn compile_keybind(spec: &KeybindSpec) -> Result<((ModMask, Keysym), Option<KeyA
     Ok((combo, Some(compile_action(&spec.action)?)))
 }
 
-/// Overlay `specs` on `defaults`. Invalid entries are reported and skipped so
-/// one typo does not discard the rest of the configuration.
+/// Overlay `specs` on `defaults`, returning the merged bindings and one
+/// diagnostic per invalid entry.
+///
+/// `context` names the table the entries came from (for example
+/// `modes.resize.keybinds`) so a diagnostic points at the exact entry instead
+/// of only naming the key. Callers that treat configuration errors as fatal
+/// turn a non-empty diagnostic list into a load error; see
+/// [`crate::config::resolve_config`].
 pub fn merge_keybinds(
     defaults: Vec<Key>,
     specs: &[KeybindSpec],
     origin: KeybindOrigin,
-) -> Vec<Key> {
+    context: &str,
+) -> (Vec<Key>, Vec<String>) {
     let mut keys: Vec<Option<Key>> = defaults.into_iter().map(Some).collect();
     // A binding's identity is its chord, so the index is keyed on the typed
     // chord rather than a `(u32, u32)` pair that could be assembled backwards.
@@ -175,12 +182,13 @@ pub fn merge_keybinds(
         .enumerate()
         .map(|(i, k)| ((k.mod_mask, k.keysym), i))
         .collect();
+    let mut diagnostics = Vec::new();
 
-    for spec in specs {
+    for (entry, spec) in specs.iter().enumerate() {
         let ((mod_mask, keysym), action) = match compile_keybind(spec) {
             Ok(compiled) => compiled,
             Err(error) => {
-                eprintln!("instantwm: ignoring keybind for '{}': {error}", spec.key);
+                diagnostics.push(format!("{context}[{entry}] (key '{}'): {error}", spec.key));
                 continue;
             }
         };
@@ -200,7 +208,7 @@ pub fn merge_keybinds(
         }
     }
 
-    keys.into_iter().flatten().collect()
+    (keys.into_iter().flatten().collect(), diagnostics)
 }
 
 #[cfg(test)]
@@ -228,6 +236,14 @@ mod tests {
         }
     }
 
+    /// Merge with no expected diagnostics, for tests about valid configs.
+    fn merge(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
+        let (merged, diagnostics) =
+            merge_keybinds(defaults, specs, KeybindOrigin::User, "keybinds");
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        merged
+    }
+
     #[test]
     fn none_action_removes_default() {
         let spec = parse_keybind(
@@ -238,7 +254,7 @@ mod tests {
             action = "none"
             "#,
         );
-        let merged = merge_keybinds(vec![default_key(XK_P)], &[spec], KeybindOrigin::User);
+        let merged = merge(vec![default_key(XK_P)], &[spec]);
         assert!(merged.is_empty());
     }
 
@@ -250,11 +266,7 @@ mod tests {
             let override_spec = parse_keybind(&format!(
                 "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"toggle_bar\""
             ));
-            let merged = merge_keybinds(
-                vec![default_key(XK_A)],
-                &[override_spec],
-                KeybindOrigin::User,
-            );
+            let merged = merge(vec![default_key(XK_A)], &[override_spec]);
             assert_eq!(merged.len(), 1, "{name} must override the default");
             assert_eq!(merged[0].keysym, XK_A);
             assert!(matches!(
@@ -266,8 +278,7 @@ mod tests {
                 "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"none\""
             ));
             assert!(
-                merge_keybinds(vec![default_key(XK_A)], &[unbind_spec], KeybindOrigin::User)
-                    .is_empty(),
+                merge(vec![default_key(XK_A)], &[unbind_spec]).is_empty(),
                 "{name} must unbind the default"
             );
         }
@@ -294,7 +305,7 @@ mod tests {
             ),
         ];
 
-        let merged = merge_keybinds(vec![default_key(XK_P)], &specs, KeybindOrigin::User);
+        let merged = merge(vec![default_key(XK_P)], &specs);
         assert_eq!(merged.len(), 2);
         assert!(matches!(
             merged[0].action,
@@ -309,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_entries_are_skipped_without_touching_defaults() {
+    fn invalid_entries_are_reported_without_touching_defaults() {
         let specs = [
             parse_keybind(
                 "[keybind]\nkey = \"p\"\nmodifiers = [\"alt\"]\naction = \"does_not_exist\"",
@@ -320,9 +331,24 @@ mod tests {
             parse_keybind("[keybind]\nkey = \"nokey\"\naction = \"zoom\""),
             parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"hyper\"]\naction = \"zoom\""),
         ];
-        let merged = merge_keybinds(vec![default_key(XK_P)], &specs, KeybindOrigin::User);
+        let (merged, diagnostics) = merge_keybinds(
+            vec![default_key(XK_P)],
+            &specs,
+            KeybindOrigin::User,
+            "modes.resize.keybinds",
+        );
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].origin, KeybindOrigin::CompiledDefault);
+        assert_eq!(diagnostics.len(), specs.len());
+        assert!(
+            diagnostics[0].contains("modes.resize.keybinds[0]")
+                && diagnostics[0].contains("'p'")
+                && diagnostics[0].contains("does_not_exist"),
+            "{}",
+            diagnostics[0]
+        );
+        assert!(diagnostics[2].contains("nokey"), "{}", diagnostics[2]);
+        assert!(diagnostics[3].contains("hyper"), "{}", diagnostics[3]);
     }
 
     #[test]
@@ -340,7 +366,7 @@ mod tests {
             "#,
         );
 
-        let merged = merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User);
+        let merged = merge(Vec::new(), &[spec]);
         let [key] = merged.as_slice() else {
             panic!("expected one compiled keybinding");
         };
@@ -369,10 +395,10 @@ mod tests {
             let spec = parse_keybind(&format!(
                 "[keybind]\nmodifiers = []\nkey = \"f\"\naction = {action}"
             ));
-            assert!(
-                merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User).is_empty(),
-                "{action}"
-            );
+            let (merged, diagnostics) =
+                merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User, "keybinds");
+            assert!(merged.is_empty(), "{action}");
+            assert_eq!(diagnostics.len(), 1, "{action}");
         }
     }
 
@@ -485,12 +511,11 @@ mod tests {
             (r#"["control"]"#, CONTROL),
             (r#"["shift"]"#, SHIFT),
         ] {
-            let merged = merge_keybinds(
+            let merged = merge(
                 Vec::new(),
                 &[parse_keybind(&format!(
                     "[keybind]\nmodifiers = {spec}\nkey = \"p\"\naction = \"zoom\""
                 ))],
-                KeybindOrigin::User,
             );
             assert_eq!(merged.len(), 1, "{spec}");
             assert_eq!(merged[0].mod_mask, expected, "{spec}");
@@ -500,14 +525,16 @@ mod tests {
         // mean Alt. One spelling per modifier, or a config cannot be read back
         // as the form the tooling prints.
         for alias in ["mod", "mod4", "modkey", "mod1", "ctrl"] {
-            let merged = merge_keybinds(
+            let (merged, diagnostics) = merge_keybinds(
                 Vec::new(),
                 &[parse_keybind(&format!(
                     "[keybind]\nmodifiers = [\"{alias}\"]\nkey = \"p\"\naction = \"zoom\""
                 ))],
                 KeybindOrigin::User,
+                "keybinds",
             );
             assert!(merged.is_empty(), "'{alias}' must be rejected");
+            assert_eq!(diagnostics.len(), 1, "'{alias}' must be reported");
         }
     }
 
@@ -516,12 +543,11 @@ mod tests {
         // Mod2/Mod3/Mod5 have no universal meaning, so they are named by
         // position and must keep working for AltGr and level-3 setups.
         for (name, expected) in [("mod2", MOD2), ("mod3", MOD3), ("mod5", MOD5)] {
-            let merged = merge_keybinds(
+            let merged = merge(
                 Vec::new(),
                 &[parse_keybind(&format!(
                     "[keybind]\nmodifiers = [\"{name}\"]\nkey = \"p\"\naction = \"zoom\""
                 ))],
-                KeybindOrigin::User,
             );
             assert_eq!(merged.len(), 1, "{name}");
             assert_eq!(merged[0].mod_mask, expected, "{name}");

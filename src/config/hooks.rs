@@ -9,8 +9,8 @@
 //!
 //! `action` accepts exactly the same values as a keybind action (a name, a
 //! name with arguments, or a `sequence`), so everything a key can do, a hook
-//! can do too. Unlike keybinds, invalid hooks are configuration errors instead of
-//! being silently skipped. Dispatch lives in [`crate::hooks`].
+//! can do too. Like keybinds, invalid hooks are configuration errors. Dispatch
+//! lives in [`crate::hooks`].
 
 use serde::{Deserialize, Serialize};
 
