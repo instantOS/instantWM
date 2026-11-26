@@ -310,7 +310,7 @@ mod view_selection_tests {
     use crate::test_support::MonitorBuilder;
     use crate::types::*;
 
-    fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
+    fn make_state_with_one_monitor(selected: TagMask) -> CoreState {
         let mut state = CoreState::default();
         let mut mmgr = MonitorManager::new();
         let mon = MonitorBuilder::new()
@@ -329,7 +329,7 @@ mod view_selection_tests {
     fn commit_view_changes_selection() {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
-        let mut state = make_globals_with_one_monitor(tag1);
+        let mut state = make_state_with_one_monitor(tag1);
 
         let result = commit_view_selection(&mut state.model.monitors, tag2);
         assert_eq!(result, Some(MonitorId::from_raw(0)));
@@ -367,7 +367,7 @@ mod view_selection_tests {
     #[test]
     fn commit_view_same_mask_returns_none() {
         let tag1 = TagMask::single(1).unwrap();
-        let mut state = make_globals_with_one_monitor(tag1);
+        let mut state = make_state_with_one_monitor(tag1);
 
         let result = commit_view_selection(&mut state.model.monitors, tag1);
         assert!(result.is_none());
@@ -377,7 +377,7 @@ mod view_selection_tests {
     fn commit_view_updates_prev_tag() {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
-        let mut state = make_globals_with_one_monitor(tag1);
+        let mut state = make_state_with_one_monitor(tag1);
 
         // First change: tag1 -> tag2
         // tag1 (bit 0) has first_tag() = Some(1), tag2 (bit 1) has first_tag() = Some(2)
@@ -399,7 +399,7 @@ mod view_selection_tests {
         // If the current tag number doesn't change, prev_tag should not update
         let multi_tag = TagMask::single(1).unwrap() | TagMask::single(2).unwrap();
         let tag3 = TagMask::single(3).unwrap();
-        let mut state = make_globals_with_one_monitor(multi_tag);
+        let mut state = make_state_with_one_monitor(multi_tag);
 
         // multi-tag view -> single tag: should set prev tag since current_tag_number changes
         // prev_tag becomes Some(1) because the previous current_tag_number was... None

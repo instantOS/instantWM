@@ -4,7 +4,7 @@ use crate::config::load_startup_config;
 use crate::core_state::CoreState;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WM globals initialisation
+// WM state initialisation
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Initialize WM configuration shared by nested and DRM/KMS Wayland modes.
@@ -14,7 +14,7 @@ use crate::core_state::CoreState;
 /// configuration when output monitors are established.
 /// Output discovery replaces the fallback dimensions and establishes monitor
 /// geometry after the compositor backend is ready.
-pub fn init_globals(state: &mut CoreState) {
+pub fn init_wm_state(state: &mut CoreState) {
     let cfg = load_startup_config(crate::backend::BackendKind::Wayland);
     state.derived.display.width = 1280;
     state.derived.display.height = 800;

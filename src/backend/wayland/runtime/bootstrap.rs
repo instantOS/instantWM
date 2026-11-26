@@ -7,11 +7,11 @@ use smithay::backend::renderer::ImportDma;
 use smithay::reexports::calloop::LoopHandle;
 
 /// D-Bus session, owned [`Wm`] with Wayland backend, and
-/// [`crate::backend::wayland::bootstrap::init_globals`].
+/// [`crate::backend::wayland::bootstrap::init_wm_state`].
 pub(crate) fn create_wayland_wm() -> Wm {
     crate::backend::wayland::session::ensure_dbus_session();
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    crate::backend::wayland::bootstrap::init_globals(&mut wm.core.state);
+    crate::backend::wayland::bootstrap::init_wm_state(&mut wm.core.state);
     wm
 }
 

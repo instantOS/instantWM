@@ -41,15 +41,15 @@ pub fn set_client_state(
 /// properties. Resolves the client once; callers that already hold the
 /// resolved data publish through [`write_client_tag_props`].
 pub fn set_client_tag_prop(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(view) = globals.model.client_view(win) else {
+    let Some(view) = state.model.client_view(win) else {
         return;
     };
-    let desktop = ewmh_desktop(globals, view.monitor, view.client);
+    let desktop = ewmh_desktop(state, view.monitor, view.client);
     write_client_tag_props(
         x11,
         x11_runtime,
@@ -91,30 +91,30 @@ pub fn write_client_tag_props(
 
 /// EWMH desktop index of `client`'s first tag on `monitor`, or `u32::MAX` for
 /// clients that are present on every desktop.
-fn ewmh_desktop(globals: &crate::core_state::CoreState, monitor: &Monitor, client: &Client) -> u32 {
+fn ewmh_desktop(state: &crate::core_state::CoreState, monitor: &Monitor, client: &Client) -> u32 {
     if client.is_sticky || client.is_scratchpad() {
         return u32::MAX;
     }
     let tag = client.tags.first_tag().unwrap_or(1);
-    desktop_for_monitor_tag(globals, monitor.id(), tag).unwrap_or(0)
+    desktop_for_monitor_tag(state, monitor.id(), tag).unwrap_or(0)
 }
 
-pub fn desktop_count(globals: &crate::core_state::CoreState) -> u32 {
-    let monitors = globals.model.monitors.len().max(1);
-    let tags = globals.model.tags.count().max(1);
+pub fn desktop_count(state: &crate::core_state::CoreState) -> u32 {
+    let monitors = state.model.monitors.len().max(1);
+    let tags = state.model.tags.count().max(1);
     monitors.saturating_mul(tags) as u32
 }
 
 pub fn desktop_for_monitor_tag(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     monitor_id: MonitorId,
     tag_index: usize,
 ) -> Option<u32> {
-    let tag_count = globals.model.tags.count().max(1);
+    let tag_count = state.model.tags.count().max(1);
     if tag_index == 0 || tag_index > tag_count {
         return None;
     }
-    let position = globals.model.monitors.position_of(monitor_id)?;
+    let position = state.model.monitors.position_of(monitor_id)?;
 
     Some((position * tag_count + (tag_index - 1)) as u32)
 }
@@ -136,21 +136,21 @@ pub fn monitor_tag_for_desktop(
 }
 
 pub fn update_ewmh_desktop_props(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
     let conn = x11.conn;
     let netatom = x11_runtime.netatom;
-    let count = desktop_count(globals);
-    let current = current_desktop(globals).unwrap_or(0);
-    let names = desktop_names(globals);
+    let count = desktop_count(state);
+    let current = current_desktop(state).unwrap_or(0);
+    let names = desktop_names(state);
     let viewport = vec![0u32; count as usize * 2];
     let geometry = [
-        globals.derived.display.width.max(1) as u32,
-        globals.derived.display.height.max(1) as u32,
+        state.derived.display.width.max(1) as u32,
+        state.derived.display.height.max(1) as u32,
     ];
-    let workarea = desktop_workarea(globals);
+    let workarea = desktop_workarea(state);
     let utf8_atom = x11_runtime.xatom.utf8_string;
 
     let _ = conn.change_property32(
@@ -198,9 +198,9 @@ pub fn update_ewmh_desktop_props(
 
     // EWMH mirrors the tag of every managed client; the monitor is already
     // known from the iteration, so no client needs to be resolved again.
-    for monitor in globals.model.monitors_iter_all() {
+    for monitor in state.model.monitors_iter_all() {
         for client in monitor.clients().values() {
-            let desktop = ewmh_desktop(globals, monitor, client);
+            let desktop = ewmh_desktop(state, monitor, client);
             set_wm_desktop_prop(x11, x11_runtime, client.win, desktop);
         }
     }
@@ -208,23 +208,23 @@ pub fn update_ewmh_desktop_props(
     let _ = conn.flush();
 }
 
-fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
-    let mon = globals.model.expect_selected_monitor();
+fn current_desktop(state: &crate::core_state::CoreState) -> Option<u32> {
+    let mon = state.model.expect_selected_monitor();
     let tag = mon.selected_tags().first_tag().unwrap_or(1);
-    desktop_for_monitor_tag(globals, mon.id(), tag)
+    desktop_for_monitor_tag(state, mon.id(), tag)
 }
 
-fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
+fn desktop_names(state: &crate::core_state::CoreState) -> Vec<u8> {
     let mut names = Vec::new();
 
-    for (pos, (_monitor_id, monitor)) in globals.model.monitors_iter().enumerate() {
-        for tag_index in 1..=globals.model.tags.count().max(1) {
+    for (pos, (_monitor_id, monitor)) in state.model.monitors_iter().enumerate() {
+        for tag_index in 1..=state.model.tags.count().max(1) {
             let tag_name = monitor
                 .tags
                 .get(tag_index - 1)
                 .map(|tag| tag.name.as_str())
                 .unwrap_or("");
-            let name = if globals.model.monitors.len() > 1 {
+            let name = if state.model.monitors.len() > 1 {
                 format!("{}:{}", pos + 1, tag_name)
             } else {
                 tag_name.to_string()
@@ -237,11 +237,11 @@ fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
     names
 }
 
-fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
-    let tag_count = globals.model.tags.count().max(1);
-    let mut workarea = Vec::with_capacity(globals.model.monitors.len().max(1) * tag_count * 4);
+fn desktop_workarea(state: &crate::core_state::CoreState) -> Vec<u32> {
+    let tag_count = state.model.tags.count().max(1);
+    let mut workarea = Vec::with_capacity(state.model.monitors.len().max(1) * tag_count * 4);
 
-    for (_monitor_id, monitor) in globals.model.monitors_iter() {
+    for (_monitor_id, monitor) in state.model.monitors_iter() {
         for _tag_index in 1..=tag_count {
             workarea.extend_from_slice(&[
                 monitor.work_rect().x.max(0) as u32,
@@ -256,8 +256,8 @@ fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
         workarea.extend_from_slice(&[
             0,
             0,
-            globals.derived.display.width.max(1) as u32,
-            globals.derived.display.height.max(1) as u32,
+            state.derived.display.width.max(1) as u32,
+            state.derived.display.height.max(1) as u32,
         ]);
     }
 
@@ -281,13 +281,13 @@ fn set_wm_desktop_prop(
 }
 
 pub fn update_client_list(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
     // `_NET_CLIENT_LIST` is published in each monitor's focus order, which is the
     // order its stack preserves; the owning map itself is unordered.
-    let windows: Vec<Window> = globals
+    let windows: Vec<Window> = state
         .model
         .monitors_iter_all()
         .flat_map(|mon| mon.iter_clients().map(|(win, _client)| Window::from(win)))

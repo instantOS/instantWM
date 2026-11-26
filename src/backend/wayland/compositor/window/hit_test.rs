@@ -204,7 +204,7 @@ impl WaylandNativeState {
 
     fn window_contents_under_pointer(
         &self,
-        globals: &crate::core_state::CoreState,
+        state: &crate::core_state::CoreState,
         point: Point<f64, Logical>,
         windows: &[(Window, WindowType)],
     ) -> PointerContents {
@@ -228,7 +228,7 @@ impl WaylandNativeState {
             // Logical hit test (WM geometry including borders).
             if !logical_win_resolved
                 && let Some(win_id) = win_id
-                && let Some(c) = globals.model.client(win_id)
+                && let Some(c) = state.model.client(win_id)
                 && c.total_rect()
                     .contains_point(crate::types::Point::new(root_x, root_y))
             {

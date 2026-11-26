@@ -118,19 +118,19 @@ fn border_pixel(scheme: &BorderScheme, mode: ClientMode, has_tiling: bool, focus
 
 /// Update the border color of `win` based on its current focus and floating state.
 pub fn refresh_border_color(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
     focused: bool,
 ) {
-    let Some(c) = globals.model.client(win) else {
+    let Some(c) = state.model.client(win) else {
         return;
     };
     let mode = c.mode();
 
     let pixel = if focused {
-        let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
+        let has_tiling = state.model.expect_selected_monitor().is_tiling_layout();
         border_pixel(&x11_runtime.border_scheme, mode, has_tiling, true)
     } else {
         border_pixel(&x11_runtime.border_scheme, mode, false, false)
@@ -149,14 +149,14 @@ pub fn refresh_border_color(
 
 /// Give input focus to `win`.
 pub fn set_focus(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
     // One resolution supplies both the focus policy and the border repaint,
     // which previously re-read the same client a second time.
-    let Some(c) = globals.model.client(win) else {
+    let Some(c) = state.model.client(win) else {
         return;
     };
     let never_focus = c.never_focus;
@@ -176,7 +176,7 @@ pub fn set_focus(
         );
     }
 
-    let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
+    let has_tiling = state.model.expect_selected_monitor().is_tiling_layout();
     let pixel = border_pixel(&x11_runtime.border_scheme, mode, has_tiling, true);
     let x11_win: Window = win.into();
     let _ = x11.conn.change_window_attributes(
@@ -184,7 +184,7 @@ pub fn set_focus(
         &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
     );
 
-    grab_buttons(globals, x11, x11_runtime, win, true);
+    grab_buttons(state, x11, x11_runtime, win, true);
 
     let _ = send_event(
         x11,
@@ -207,7 +207,7 @@ pub fn set_focus(
 /// When `redirect_to_root` is true, input focus is redirected to the root
 /// window and `_NET_ACTIVE_WINDOW` is cleared.
 pub fn unfocus_win(
-    globals: &CoreState,
+    state: &CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -217,9 +217,9 @@ pub fn unfocus_win(
         return;
     }
 
-    grab_buttons(globals, x11, x11_runtime, win, false);
+    grab_buttons(state, x11, x11_runtime, win, false);
 
-    refresh_border_color(globals, x11, x11_runtime, win, false);
+    refresh_border_color(state, x11, x11_runtime, win, false);
 
     if redirect_to_root {
         let _ = x11
@@ -239,7 +239,7 @@ pub fn unfocus_win(
 
 /// Grab or ungrab mouse buttons on `win` depending on whether it is focused.
 pub fn grab_buttons(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -260,11 +260,11 @@ pub fn grab_buttons(
     // click-through for the focused client.
     if !focused {
         grabs.extend([(1, ModMask::NONE), (3, ModMask::NONE)]);
-    } else if globals.model.is_overview_active() {
+    } else if state.model.is_overview_active() {
         grabs.push((1, ModMask::NONE));
     }
 
-    for button in &globals.config.bindings.buttons {
+    for button in &state.config.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }

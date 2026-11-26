@@ -102,10 +102,10 @@ fn flush_pending_spawn_animations(
 
 fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, animated: bool) {
     let plan = {
-        let globals = &mut ctx.core_mut().state;
-        let layout_cfg = globals.config.layout;
-        let resize_hints = globals.config.window.resize_hints;
-        let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
+        let state = &mut ctx.core_mut().state;
+        let layout_cfg = state.config.layout;
+        let resize_hints = state.config.window.resize_hints;
+        let Some(monitor) = state.model.monitors.get_mut(monitor_id) else {
             return;
         };
         monitor.compute_arrange(&layout_cfg, resize_hints, animated)

@@ -110,14 +110,13 @@ impl WorkspaceSnapshot {
         core_view: &crate::core_state::CoreState,
         state: &crate::backend::wayland::compositor::WaylandNativeState,
     ) -> Self {
-        let globals = core_view;
         let monitors = state
             .space
             .outputs()
             .cloned()
             .map(|output| {
                 let output_name = output.name();
-                let monitor = globals
+                let monitor = core_view
                     .model
                     .monitors
                     .iter_all()
@@ -227,10 +226,9 @@ fn refresh_needed(
     {
         return true;
     }
-    let globals = core_view;
     for output in state.space.outputs() {
         let output_name = output.name();
-        let Some(monitor) = globals
+        let Some(monitor) = core_view
             .model
             .monitors
             .iter_all()

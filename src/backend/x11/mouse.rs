@@ -144,26 +144,26 @@ pub struct PointerSnapshot {
 /// Read position and root child together. QueryPointer already returns both;
 /// keeping them together prevents a second round trip in hover handling.
 pub fn pointer_snapshot(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,
 ) -> Option<PointerSnapshot> {
     let reply = conn.query_pointer(root).ok()?.reply().ok()?;
     Some(PointerSnapshot {
         root: Point::new(reply.root_x as i32, reply.root_y as i32),
-        child: managed_window(globals, reply.child),
+        child: managed_window(state, reply.child),
     })
 }
 
 pub fn managed_window(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     window: x11rb::protocol::xproto::Window,
 ) -> Option<WindowId> {
     if window == x11rb::NONE {
         return None;
     }
     let window = WindowId::from(window);
-    globals.model.client(window).is_some().then_some(window)
+    state.model.client(window).is_some().then_some(window)
 }
 
 #[cfg(test)]

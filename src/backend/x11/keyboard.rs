@@ -113,7 +113,7 @@ fn plan_grabs(
 /// Update only changed X11 keybindings. Unchanged portal grabs never require
 /// another server round trip when focus or desktop-binding scope changes.
 pub fn grab_keys(
-    globals: &crate::core_state::CoreState,
+    state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
@@ -123,15 +123,15 @@ pub fn grab_keys(
         return;
     }
     let bindings = crate::keyboard::passive_bindings(
-        &globals.config.bindings,
-        globals.model.selected_win(),
-        &globals.behavior.current_mode,
+        &state.config.bindings,
+        state.model.selected_win(),
+        &state.behavior.current_mode,
     );
     let triggers = if matches!(
-        globals.behavior.current_mode,
+        state.behavior.current_mode,
         crate::core_state::ActiveWmMode::Default
     ) {
-        globals.shortcuts.triggers()
+        state.shortcuts.triggers()
     } else {
         Vec::new()
     };
@@ -198,7 +198,7 @@ pub fn grab_keys(
                 let _ = conn.ungrab_key(*code, root, XModMask::from(*mods));
             }
             log::warn!("global shortcuts: X11 could not grab {}", trigger.text());
-            globals.shortcuts.reject_trigger(trigger);
+            state.shortcuts.reject_trigger(trigger);
         } else {
             portal.extend(grabs);
         }

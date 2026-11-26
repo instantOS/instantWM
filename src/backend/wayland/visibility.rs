@@ -11,8 +11,8 @@ use crate::contexts::WmCtxWayland;
 use crate::types::WindowId;
 
 pub(crate) fn apply_visibility(ctx: &mut WmCtxWayland<'_>) {
-    let globals = &ctx.wayland.state.wm.core.state;
-    for entry in crate::client::visibility::visibility_plan(&globals.model) {
+    let state = &ctx.wayland.state.wm.core.state;
+    for entry in crate::client::visibility::visibility_plan(&state.model) {
         // Newly spawned windows (pending their first layout) are intentionally
         // left unmapped here.  They are mapped at their layout-allocated rect
         // after arrange runs, so the client never appears at its initial

@@ -454,14 +454,14 @@ mod tests {
         )
     }
 
-    fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
-        let mut globals = CoreState::default();
+    fn state_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
+        let mut state = CoreState::default();
 
         let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        let monitor_id = globals.model.monitors.push(monitor);
+        let monitor_id = state.model.monitors.push(monitor);
 
         let mut client = Client {
             win: WindowId::from(1_u32),
@@ -473,9 +473,9 @@ mod tests {
         client.geo = rect;
         client.save_floating_placement(rect, work_rect);
         client.old_geo = rect;
-        assert!(globals.model.add_client(monitor_id, client));
+        assert!(state.model.add_client(monitor_id, client));
 
-        globals
+        state
     }
 
     fn tiled_client(rect: Rect, border_width: i32) -> Client {
@@ -673,55 +673,55 @@ mod tests {
 
     #[test]
     fn sane_floating_spawn_rect_clamps_under_bar() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(100, 0, 500, 300),
             2,
             Rect::new(0, 32, 1920, 1048),
         );
 
         let rect =
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.y, 32);
     }
 
     #[test]
     fn sane_floating_spawn_rect_centers_when_completely_offscreen() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(-4000, -3000, 500, 300),
             2,
             Rect::new(0, 32, 1920, 1048),
         );
 
         let rect =
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.x, 708);
         assert_eq!(rect.y, 404);
     }
 
     #[test]
     fn sane_floating_spawn_rect_anchors_large_windows_to_work_area() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(200, 200, 1900, 1100),
             2,
             Rect::new(0, 32, 1920, 1048),
         );
 
         let rect =
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.x, 16);
         assert_eq!(rect.y, 32);
     }
 
     #[test]
     fn app_requested_floating_geometry_is_clamped_before_sync() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(100, 100, 500, 300),
             2,
             Rect::new(0, 32, 1920, 1048),
         );
 
         let rect = resolve_floating_placement(
-            &globals.model,
+            &state.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 500, 300),
             FloatingPlacementKind::NewExplicit,
@@ -734,12 +734,12 @@ mod tests {
 
     #[test]
     fn new_offscreen_transient_prefers_parent_center() {
-        let mut globals = globals_with_floating_client(
+        let mut state = state_with_floating_client(
             Rect::new(-4000, -3000, 400, 200),
             2,
             Rect::new(0, 32, 1920, 1048),
         );
-        let parent_monitor = globals
+        let parent_monitor = state
             .model
             .monitor_of_client(WindowId::from(1_u32))
             .unwrap();
@@ -748,10 +748,10 @@ mod tests {
             geo: Rect::new(500, 300, 800, 600),
             ..Client::default()
         };
-        assert!(globals.model.add_client(parent_monitor, parent));
+        assert!(state.model.add_client(parent_monitor, parent));
 
         let rect = resolve_floating_placement(
-            &globals.model,
+            &state.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 400, 200),
             FloatingPlacementKind::NewAutomatic,
@@ -764,40 +764,40 @@ mod tests {
 
     #[test]
     fn new_automatic_float_centers_in_work_area() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(0, 0, 500, 300),
             2,
             Rect::new(1920, 32, 1920, 1048),
         );
 
         let rect =
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, false).unwrap();
         assert_eq!(rect, Rect::new(2628, 404, 500, 300));
     }
 
     #[test]
     fn new_explicit_float_preserves_usable_position() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(2100, 180, 500, 300),
             2,
             Rect::new(1920, 32, 1920, 1048),
         );
 
         assert!(
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true,).is_none()
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, true,).is_none()
         );
     }
 
     #[test]
     fn automatic_oversized_float_anchors_to_work_area() {
-        let globals = globals_with_floating_client(
+        let state = state_with_floating_client(
             Rect::new(0, 0, 2000, 1200),
             2,
             Rect::new(1920, 32, 1920, 1048),
         );
 
         let rect =
-            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
+            sane_floating_spawn_rect(&state.model, WindowId::from(1_u32), None, false).unwrap();
         assert_eq!(rect, Rect::new(1920, 32, 2000, 1200));
     }
 

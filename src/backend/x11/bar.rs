@@ -134,7 +134,7 @@ fn sync_top_bar_surfaces(
 }
 
 /// Apply bottom-strip geometry, appearance and explicit visibility.
-fn resize_bottom_bar_win(globals: &crate::core_state::CoreState, x11: &X11BackendRef, m: &Monitor) {
+fn resize_bottom_bar_win(state: &crate::core_state::CoreState, x11: &X11BackendRef, m: &Monitor) {
     let bottom_win: Window = m.bottom_bar_win.into();
     if bottom_win == 0 {
         return;
@@ -152,7 +152,7 @@ fn resize_bottom_bar_win(globals: &crate::core_state::CoreState, x11: &X11Backen
     if !bounds.size().is_positive() {
         return;
     }
-    let status_bg: u32 = globals.config.colors.status.background.into();
+    let status_bg: u32 = state.config.colors.status.background.into();
     let _ = x11.conn.change_window_attributes(
         bottom_win,
         &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().background_pixel(status_bg),
