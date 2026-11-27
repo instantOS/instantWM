@@ -17,12 +17,19 @@ pub(super) struct Dialog {
     child: Mutex<Option<Child>>,
 }
 
+/// Roomy rows (2.5x font height) match the layout chooser while the list still
+/// fits comfortably. Past this, keep instantMENU's compact default so a long
+/// shortcut list leaves the menu on screen.
+const ROOMY_LINE_LIMIT: usize = 10;
+const MAX_VISIBLE_LINES: usize = 14;
+
 fn menu_command(
     presenter: &std::path::Path,
     prompt: &str,
     entries: &str,
     input: Option<&str>,
 ) -> Command {
+    let lines = entries.lines().count().clamp(1, MAX_VISIBLE_LINES);
     let mut command = Command::new(presenter);
     command
         .args([
@@ -33,7 +40,7 @@ fn menu_command(
             "--width",
             "auto",
             "--lines",
-            &entries.lines().count().clamp(1, 14).to_string(),
+            &lines.to_string(),
             "--placeholder",
             &clean(prompt),
             "--insensitive",
@@ -42,6 +49,9 @@ fn menu_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .process_group(0);
+    if lines <= ROOMY_LINE_LIMIT {
+        command.args(["--line-height", "auto"]);
+    }
     if let Some(input) = input {
         command.args(["--input-only", "--initial-text", input]);
     } else {
@@ -402,8 +412,33 @@ mod tests {
             .map(|argument| argument.to_str().unwrap())
             .collect();
         assert!(args.windows(2).any(|pair| pair == ["--border-width", "4"]));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--line-height", "auto"])
+        );
         assert!(args.contains(&"--insensitive"));
         assert!(args.contains(&"--reject-no-match"));
         assert!(!args.iter().any(|argument| argument.contains('—')));
+    }
+
+    #[test]
+    fn only_short_menus_use_roomy_rows() {
+        let entry = "{icon=mdkeyboard value=edit} Binding\n";
+        let short = entry.repeat(ROOMY_LINE_LIMIT);
+        let long = entry.repeat(ROOMY_LINE_LIMIT + 1);
+        for (entries, roomy) in [(&short, true), (&long, false)] {
+            let command =
+                menu_command(std::path::Path::new("instantmenu"), "prompt", entries, None);
+            let args: Vec<_> = command
+                .get_args()
+                .map(|argument| argument.to_str().unwrap())
+                .collect();
+            assert_eq!(
+                args.windows(2)
+                    .any(|pair| pair == ["--line-height", "auto"]),
+                roomy
+            );
+            assert!(args.contains(&"--lines"));
+        }
     }
 }
