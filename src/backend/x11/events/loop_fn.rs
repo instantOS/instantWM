@@ -88,10 +88,6 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         &mut wm.core.bar.systray_host,
         |wm| wm.x11_ctx(),
     );
-    crate::bar::layout_menu::install(loop_handle.clone(), &mut wm.core.bar.layout_menu, |wm| {
-        wm.x11_ctx()
-    });
-
     // ── StatusNotifier worker ───────────────────────────────────────────
     // Items position their own menus under X11, so no native-menu slot is
     // provided; the wake ping makes icon changes render while idle.

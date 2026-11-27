@@ -38,7 +38,6 @@ pub enum BarChange {
 
 #[derive(Default)]
 pub struct BarState {
-    pub(crate) layout_menu: layout_menu::LayoutMenuHost,
     pending_change: Option<BarChange>,
     bar_update_seq: u64,
     last_drawn_seq: u64,

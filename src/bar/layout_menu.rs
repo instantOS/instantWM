@@ -1,34 +1,29 @@
-//! WM-owned layout chooser. The event loop watches the presenter only while
-//! it is open; its stdout callback applies the choice without per-tick polling.
-use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
-
-use crate::actions::{KeyAction, NamedAction};
+//! WM-owned layout chooser. The central [`crate::menu::MenuManager`] owns the
+//! presenter lifecycle; this module snapshots the chooser and applies a
+//! validated answer.
+use crate::actions::NamedAction;
 use crate::contexts::WmCtx;
 use crate::layouts::LayoutCommand;
-use crate::types::{Key, Modifier, Monitor, MonitorId, TagMask};
+use crate::menu::{
+    ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuPosition, MenuSpec, shortcut_hint_where,
+};
+use crate::types::{Key, Monitor, MonitorId, TagMask};
 
 pub(crate) struct Choice {
     value: String,
     label: String,
     icon: &'static str,
-    color: &'static str,
+    color: MenuColor,
     action: Option<NamedAction>,
     shortcut: Option<String>,
 }
 
 impl Choice {
-    fn line(&self) -> String {
-        format!(
-            "{{{} icon={} value={}{}}} {}",
-            self.color,
-            self.icon,
-            self.value,
-            self.shortcut
-                .as_ref()
-                .map_or_else(String::new, |key| format!(" shortcut={key}")),
-            self.label
-        )
+    fn menu_choice(&self) -> MenuChoice {
+        MenuChoice::item(self.value.clone(), self.label.clone())
+            .icon(self.icon)
+            .color(self.color)
+            .shortcut(self.shortcut.clone())
     }
 }
 
@@ -45,7 +40,11 @@ fn layout_choice(layout: LayoutCommand, active: LayoutCommand) -> Choice {
         value: layout.name().into(),
         label: format!("{label}{}", if current { " (current)" } else { "" }),
         icon: layout.symbol(),
-        color: if current { "green" } else { "blue" },
+        color: if current {
+            MenuColor::Green
+        } else {
+            MenuColor::Blue
+        },
         // Choosing the current layout must not silently reset edits.
         action: (!current).then_some(NamedAction::SetLayout(layout)),
         shortcut: None,
@@ -75,7 +74,7 @@ fn choices(active: LayoutCommand) -> Vec<Choice> {
                 choice.label.trim_end_matches(" (current)").to_lowercase()
             ),
             icon: "fa-arrow-rotate-left",
-            color: "yellow",
+            color: MenuColor::Yellow,
             action: Some(NamedAction::ResetLayoutTo(layout)),
             shortcut: None,
         });
@@ -91,67 +90,6 @@ fn selected_action(entries: &[Choice], answer: &str) -> Option<NamedAction> {
         .and_then(|entry| entry.action.clone())
 }
 
-/// Translate only chords supported by instantMENU; invalid metadata would
-/// otherwise cause it to treat the whole decorated row as ordinary text.
-fn menu_shortcut(binding: &Key) -> Option<String> {
-    let modifiers = binding.mod_mask;
-    let mut shortcut = String::new();
-    for modifier in modifiers.iter() {
-        shortcut.push_str(match modifier {
-            Modifier::Super => "super-",
-            Modifier::Control => "ctrl-",
-            Modifier::Alt => "alt-",
-            Modifier::Shift => "shift-",
-            _ => return None,
-        });
-    }
-    let key = binding.keysym.to_string().to_lowercase();
-    let key = match key.as_str() {
-        "return" => "enter",
-        "prior" => "page-up",
-        "next" => "page-down",
-        key => key,
-    };
-    let character =
-        key.chars().count() == 1 && key.chars().all(|c| !c.is_whitespace() && !c.is_control());
-    let function = key.strip_prefix('f').is_some_and(|n| {
-        n.parse::<u8>()
-            .is_ok_and(|n| (1..=35).contains(&n) && key == format!("f{n}"))
-    });
-    if !character
-        && !function
-        && !matches!(
-            key,
-            "enter"
-                | "tab"
-                | "space"
-                | "backspace"
-                | "delete"
-                | "insert"
-                | "left"
-                | "right"
-                | "up"
-                | "down"
-                | "home"
-                | "end"
-                | "page-up"
-                | "page-down"
-        )
-    {
-        return None;
-    }
-    if (modifiers.is_empty() && matches!(key, "enter" | "tab"))
-        || (modifiers.contains(Modifier::Control)
-            && !modifiers.contains(Modifier::Alt)
-            && !modifiers.contains(Modifier::Super)
-            && matches!(key, "c" | "g"))
-    {
-        return None;
-    }
-    shortcut.push_str(key);
-    Some(shortcut)
-}
-
 fn apply_shortcuts(entries: &mut [Choice], bindings: &[Key]) {
     for entry in entries {
         let action = entry
@@ -159,25 +97,19 @@ fn apply_shortcuts(entries: &mut [Choice], bindings: &[Key]) {
             .clone()
             .or_else(|| LayoutCommand::from_name(&entry.value).map(NamedAction::SetLayout));
         let Some(action) = action else { continue };
-        entry.shortcut = bindings
-            .iter()
-            .filter(|binding| {
-                let KeyAction::Named(bound) = &binding.action else {
-                    return false;
-                };
-                bound == &action
-                    || matches!(
-                        (&action, bound),
-                        (
-                            NamedAction::SetLayout(LayoutCommand::Floating),
-                            NamedAction::LayoutFloat
-                        ) | (
-                            NamedAction::SetLayout(LayoutCommand::Maximized),
-                            NamedAction::ToggleTilingMaximized
-                        )
+        entry.shortcut = shortcut_hint_where(bindings, |bound| {
+            bound == &action
+                || matches!(
+                    (&action, bound),
+                    (
+                        NamedAction::SetLayout(LayoutCommand::Floating),
+                        NamedAction::LayoutFloat
+                    ) | (
+                        NamedAction::SetLayout(LayoutCommand::Maximized),
+                        NamedAction::ToggleTilingMaximized
                     )
-            })
-            .find_map(menu_shortcut);
+                )
+        });
     }
 }
 
@@ -188,45 +120,29 @@ struct MenuAnchor {
     y_offset: i32,
 }
 
-fn menu_command(active: LayoutCommand, anchor: &MenuAnchor) -> Command {
-    let mut command = Command::new("instantmenu");
-    command
-        .args([
-            "--position",
-            if anchor.monitor.is_some() {
-                "top-left"
+impl MenuAnchor {
+    fn menu_options(&self, active: LayoutCommand) -> MenuOptions {
+        MenuOptions {
+            placeholder: Some("Choose window layout".into()),
+            position: if self.monitor.is_some() {
+                MenuPosition::TopLeft
             } else {
-                "center"
+                MenuPosition::Center
             },
-            "--border-width",
-            "4",
-            "--width",
-            "auto",
-            "--line-height",
-            "auto",
-            "--columns",
-            "2",
-            "--lines",
-            "4",
-            "--placeholder",
-            "Choose window layout",
-            "--insensitive",
-            "--reject-no-match",
-            "--preselect",
-            active.name(),
-        ])
-        .args([
-            "--monitor",
-            &anchor
-                .monitor
-                .map_or_else(|| "auto".into(), |index| index.to_string()),
-        ])
-        .args(["--x-offset", &anchor.x_offset.to_string()])
-        .args(["--y-offset", &anchor.y_offset.to_string()])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .process_group(0);
-    command
+            monitor: Some(
+                self.monitor
+                    .map_or_else(|| "auto".into(), |index| index.to_string()),
+            ),
+            x_offset: self.x_offset,
+            y_offset: self.y_offset,
+            width: Some("auto".into()),
+            line_height: Some("auto".into()),
+            columns: Some(2),
+            lines: Some(4),
+            preselect: Some(active.name().into()),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -244,26 +160,11 @@ impl MenuContext {
     }
 }
 
-pub(crate) type LayoutMenuHost = crate::menu_presenter::MenuHost<(MenuContext, Vec<Choice>)>;
-
-pub(crate) fn install<T: 'static>(
-    handle: calloop::LoopHandle<'static, T>,
-    host: &mut LayoutMenuHost,
-    context: for<'a> fn(&'a mut T) -> WmCtx<'a>,
-) {
-    crate::menu_presenter::install(
-        handle,
-        host,
-        context,
-        |ctx, generation, (menu_context, entries), answer| {
-            finish(
-                ctx,
-                generation,
-                menu_context,
-                selected_action(&entries, answer),
-            );
-        },
-    );
+/// Snapshot captured when the chooser opened. Only a value from this list may
+/// be applied, and only while the selected monitor and tags still match.
+pub(crate) struct LayoutMenuState {
+    context: MenuContext,
+    entries: Vec<Choice>,
 }
 
 fn anchor(monitor: &Monitor, layout_start: i32) -> (i32, i32) {
@@ -273,79 +174,75 @@ fn anchor(monitor: &Monitor, layout_start: i32) -> (i32, i32) {
     )
 }
 
+fn menu_spec(active: LayoutCommand, anchor: &MenuAnchor, entries: &[Choice]) -> MenuSpec {
+    MenuSpec {
+        options: anchor.menu_options(active),
+        choices: entries.iter().map(Choice::menu_choice).collect(),
+    }
+}
+
 pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let core = ctx.core_mut();
-    let monitor = core.state.model.expect_selected_monitor();
-    let context = MenuContext::from_monitor(monitor);
-    let active = monitor.current_layout_command();
-    let position = core
-        .bar
-        .monitor_hit_cache(monitor.id())
-        .map(|hit| {
-            let (x_offset, y_offset) = anchor(monitor, hit.layout_start);
-            MenuAnchor {
-                monitor: Some(monitor.num.max(0) as u32),
-                x_offset,
-                y_offset,
-            }
-        })
-        .unwrap_or_default();
+    let (context, active, anchor) = {
+        let monitor = core.state.model.expect_selected_monitor();
+        let context = MenuContext::from_monitor(monitor);
+        let active = monitor.current_layout_command();
+        let anchor = core
+            .bar
+            .monitor_hit_cache(monitor.id())
+            .map(|hit| {
+                let (x_offset, y_offset) = anchor(monitor, hit.layout_start);
+                MenuAnchor {
+                    monitor: Some(monitor.num.max(0) as u32),
+                    x_offset,
+                    y_offset,
+                }
+            })
+            .unwrap_or_default();
+        (context, active, anchor)
+    };
     let mut entries = choices(active);
     apply_shortcuts(&mut entries, &core.state.config.bindings.keys);
-    start_menu(
-        &mut core.bar.layout_menu,
-        menu_command(active, &position),
-        context,
-        entries,
-    )
+    let spec = menu_spec(active, &anchor, &entries);
+    core.menus
+        .start(spec, ActiveMenu::Layout(LayoutMenuState { context, entries }))
 }
 
-fn start_menu(
-    host: &mut LayoutMenuHost,
-    command: Command,
-    context: MenuContext,
-    entries: Vec<Choice>,
+/// Apply a presenter answer against the snapshot taken when the menu opened.
+pub(crate) fn apply(
+    ctx: &mut WmCtx<'_>,
+    state: LayoutMenuState,
+    answer: &str,
 ) -> Result<(), String> {
-    let input = entries
-        .iter()
-        .map(Choice::line)
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
-    crate::menu_presenter::start(host, command, (context, entries), input)
-}
-
-fn finish(ctx: &mut WmCtx<'_>, generation: u64, context: MenuContext, action: Option<NamedAction>) {
-    let host = &mut ctx.core_mut().bar.layout_menu;
-    if generation != host.generation {
-        return;
+    let LayoutMenuState { context, entries } = state;
+    let unchanged = {
+        let monitor = ctx.core().state.model.expect_selected_monitor();
+        context == MenuContext::from_monitor(monitor)
+    };
+    if !unchanged {
+        return Ok(());
     }
-    // The callback removes its own source with PostAction::Remove.
-    host.source = None;
-    // A complete stdout value is the presenter's selection. Reaping is separate
-    // so process shutdown can never delay the event-loop callback.
-    if let Some(child) = host.child.take() {
-        crate::util::reap_child_async(child);
+    let Some(action) = selected_action(&entries, answer) else {
+        return Ok(());
+    };
+    let current = ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .current_layout_command();
+    if matches!(action, NamedAction::SetLayout(layout) if layout == current) {
+        return Ok(());
     }
-    let monitor = ctx.core().state.model.expect_selected_monitor();
-    if context != MenuContext::from_monitor(monitor) {
-        return;
-    }
-    let Some(action) = action else { return };
-    if matches!(action, NamedAction::SetLayout(layout) if layout == monitor.current_layout_command())
-    {
-        return;
-    }
-    if let Err(error) = action.execute(ctx) {
-        log::warn!("layout chooser: {error}");
-    }
+    action.execute(ctx)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::menu_presenter::read_answer;
-    use std::io::Write;
+    use crate::menu_presenter;
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
 
     fn wm_with_monitor() -> crate::test_support::TestWm {
         let mut wm =
@@ -360,15 +257,9 @@ mod tests {
         wm
     }
 
-    #[test]
-    fn presenter_receives_shortcuts_and_returns_an_action_without_ipc() {
-        let mut wm = wm_with_monitor();
-        let mut event_loop = calloop::EventLoop::try_new().unwrap();
-        install(
-            event_loop.handle(),
-            &mut wm.core.bar.layout_menu,
-            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
-        );
+    /// The chooser as `open` would have built it, including the default
+    /// bindings that give every entry its shortcut hint.
+    fn session(wm: &crate::test_support::TestWm) -> (MenuSpec, LayoutMenuState) {
         let monitor = wm.core.state.model.expect_selected_monitor();
         let context = MenuContext::from_monitor(monitor);
         let active = monitor.current_layout_command();
@@ -377,15 +268,36 @@ mod tests {
             &mut entries,
             &crate::config::keybindings::default_keybinds(crate::backend::BackendKind::Wayland),
         );
+        let spec = menu_spec(active, &MenuAnchor::default(), &entries);
+        (spec, LayoutMenuState { context, entries })
+    }
+
+    #[test]
+    fn presenter_receives_shortcuts_and_returns_an_action_without_ipc() {
+        let mut wm = wm_with_monitor();
+        let mut event_loop = calloop::EventLoop::try_new().unwrap();
+        wm.core
+            .menus
+            .install(event_loop.handle(), |wm: &mut crate::test_support::TestWm| {
+                wm.test_ctx()
+            });
+        let (spec, state) = session(&wm);
         let mut command = Command::new("sh");
         command.args(["-c", r#"input=$(cat); case "$input" in *shortcut=super-c*) printf 'floating\n';; *) exit 1;; esac"#])
             .stdin(Stdio::piped()).stdout(Stdio::piped()).process_group(0);
-        start_menu(&mut wm.core.bar.layout_menu, command, context, entries).unwrap();
+        menu_presenter::start(
+            &mut wm.core.menus.host,
+            command,
+            ActiveMenu::Layout(state),
+            spec.input(),
+        )
+        .unwrap();
         event_loop
             .dispatch(std::time::Duration::from_secs(5), &mut wm)
             .unwrap();
-        assert!(wm.core.bar.layout_menu.source.is_none());
-        assert!(wm.core.bar.layout_menu.child.is_none());
+        assert!(!wm.core.menus.is_open());
+        assert!(wm.core.menus.host.source.is_none());
+        assert!(wm.core.menus.host.child.is_none());
         assert_eq!(
             wm.core
                 .state
@@ -397,132 +309,66 @@ mod tests {
     }
 
     #[test]
-    fn superseded_or_stale_selections_are_ignored() {
+    fn stale_context_unknown_answers_and_the_current_layout_are_noops() {
         let mut wm = wm_with_monitor();
         let monitor = wm.core.state.model.expect_selected_monitor();
         let context = MenuContext::from_monitor(monitor);
         let active = monitor.current_layout_command();
-        wm.core.bar.layout_menu.cancel();
-        let current_generation = wm.core.bar.layout_menu.generation;
-        for (generation, context) in [
-            (current_generation - 1, context),
+        let cases = [
             (
-                current_generation,
                 MenuContext {
                     tags: TagMask::single(2).unwrap(),
                     ..context
                 },
+                "floating",
             ),
             (
-                current_generation,
                 MenuContext {
                     monitor: MonitorId::from_raw(context.monitor.get() + 1),
                     ..context
                 },
+                "floating",
             ),
-        ] {
-            wm.with_ctx(|ctx| {
-                finish(
-                    ctx,
-                    generation,
-                    context,
-                    Some(NamedAction::SetLayout(LayoutCommand::Floating)),
-                )
-            });
-        }
-        assert_eq!(
-            wm.core
-                .state
-                .model
-                .expect_selected_monitor()
-                .current_layout_command(),
-            active
-        );
-    }
-
-    #[test]
-    fn cancellation_removes_the_source_and_releases_the_child() {
-        let mut wm = wm_with_monitor();
-        let mut event_loop = calloop::EventLoop::try_new().unwrap();
-        install(
-            event_loop.handle(),
-            &mut wm.core.bar.layout_menu,
-            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
-        );
-        let monitor = wm.core.state.model.expect_selected_monitor();
-        let context = MenuContext::from_monitor(monitor);
-        let mut command = Command::new("sh");
-        command
-            .args(["-c", "exec sleep 30"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .process_group(0);
-        let host = &mut wm.core.bar.layout_menu;
-        start_menu(host, command, context, choices(LayoutCommand::Tile)).unwrap();
-        host.cancel();
-        assert!(host.source.is_none());
-        assert!(host.child.is_none());
-        // Removing the source also closes the pipe. No menu callback should
-        // remain registered after cancellation.
-        event_loop
-            .dispatch(std::time::Duration::ZERO, &mut wm)
-            .unwrap();
-    }
-
-    #[test]
-    fn partial_output_waits_for_readiness_without_blocking() {
-        let (mut output, mut writer) = std::os::unix::net::UnixStream::pair().unwrap();
-        output.set_nonblocking(true).unwrap();
-        let mut buffer = Vec::new();
-        writer.write_all(b"flo").unwrap();
-        assert_eq!(read_answer(&mut output, &mut buffer).unwrap(), None);
-        writer.write_all(b"ating\n").unwrap();
-        assert_eq!(
-            read_answer(&mut output, &mut buffer).unwrap(),
-            Some("floating".into())
-        );
-    }
-
-    #[test]
-    fn dismissal_and_unknown_output_remove_the_source_without_changing_layout() {
-        for script in ["cat >/dev/null", "cat >/dev/null; printf 'unknown\\n'"] {
-            let mut wm = wm_with_monitor();
-            let mut event_loop = calloop::EventLoop::try_new().unwrap();
-            install(
-                event_loop.handle(),
-                &mut wm.core.bar.layout_menu,
-                |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
-            );
-            let monitor = wm.core.state.model.expect_selected_monitor();
-            let context = MenuContext::from_monitor(monitor);
-            let active = monitor.current_layout_command();
-            let mut command = Command::new("sh");
-            command
-                .args(["-c", script])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .process_group(0);
-            start_menu(
-                &mut wm.core.bar.layout_menu,
-                command,
-                context,
-                choices(active),
-            )
-            .unwrap();
-            event_loop
-                .dispatch(std::time::Duration::from_secs(5), &mut wm)
-                .unwrap();
-            assert!(wm.core.bar.layout_menu.source.is_none());
-            assert!(wm.core.bar.layout_menu.child.is_none());
+            (context, "arbitrary typed text"),
+            (context, ""),
+            (context, active.name()),
+        ];
+        for (context, answer) in cases {
+            let mut entries = choices(active);
+            apply_shortcuts(&mut entries, &[]);
+            let state = LayoutMenuState { context, entries };
+            wm.with_ctx(|ctx| apply(ctx, state, answer).unwrap());
             assert_eq!(
                 wm.core
                     .state
                     .model
                     .expect_selected_monitor()
                     .current_layout_command(),
-                active
+                active,
+                "answer {answer:?} must not change the layout"
             );
         }
+    }
+
+    #[test]
+    fn apply_executes_a_listed_action_for_the_unchanged_context() {
+        let mut wm = wm_with_monitor();
+        let monitor = wm.core.state.model.expect_selected_monitor();
+        let context = MenuContext::from_monitor(monitor);
+        let active = monitor.current_layout_command();
+        let mut entries = choices(active);
+        apply_shortcuts(&mut entries, &[]);
+        wm.with_ctx(|ctx| {
+            apply(ctx, LayoutMenuState { context, entries }, "floating").unwrap();
+        });
+        assert_eq!(
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .current_layout_command(),
+            LayoutCommand::Floating
+        );
     }
 
     #[test]
@@ -543,7 +389,7 @@ mod tests {
         Key {
             mod_mask: modifiers.parse().unwrap(),
             keysym: crate::types::Keysym::from_name(key).unwrap(),
-            action: KeyAction::named(
+            action: crate::actions::KeyAction::named(
                 NamedAction::parse(name, &words.map(str::to_owned).collect::<Vec<_>>()).unwrap(),
             ),
             origin: crate::types::KeybindOrigin::User,
@@ -592,9 +438,10 @@ mod tests {
             ("reset-tile", "ctrl-f3"),
         ] {
             let entry = entries.iter().find(|entry| entry.value == value).unwrap();
+            let line = entry.menu_choice().to_line();
             assert_eq!(entry.shortcut.as_deref(), Some(shortcut));
-            assert!(entry.line().contains(&format!(" shortcut={shortcut}}}")));
-            assert!(entry.line().contains(&format!(" value={value} ")));
+            assert!(line.contains(&format!(" shortcut={shortcut}}}")));
+            assert!(line.contains(&format!(" value={value} ")));
         }
         assert_eq!(selected_action(&entries, "grid"), None);
         assert_eq!(entries[0].shortcut, None);
@@ -602,26 +449,12 @@ mod tests {
 
     #[test]
     fn unsupported_shortcuts_are_omitted_without_losing_menu_metadata() {
-        for (modifiers, key) in [
-            ("Mod3", "g"),
-            ("Super", "Escape"),
-            ("Control", "c"),
-            ("", "Return"),
-            ("Super", "XF86AudioMute"),
-        ] {
-            assert_eq!(
-                menu_shortcut(&binding(modifiers, key, "set_layout grid")),
-                None
-            );
-        }
-        assert_eq!(
-            menu_shortcut(&binding("Alt", "Prior", "set_layout grid")),
-            Some("alt-page-up".into())
-        );
         let mut entries = choices(LayoutCommand::Tile);
         apply_shortcuts(&mut entries, &[binding("Mod3", "g", "set_layout grid")]);
-        assert!(entries[1].line().starts_with("{blue icon="));
-        assert!(!entries[1].line().contains("shortcut="));
+        let line = entries[1].menu_choice().to_line();
+        assert!(line.starts_with("{blue icon="));
+        assert!(!line.contains("shortcut="));
+        assert!(line.contains(" value=grid}"));
     }
 
     #[test]
@@ -671,8 +504,9 @@ mod tests {
         let mut entries = choices(LayoutCommand::Grid);
         for entry in &mut entries {
             entry.label = "A translated label".into();
-            assert!(entry.line().contains(&format!("value={}", entry.value)));
-            assert!(entry.line().contains("icon="));
+            let line = entry.menu_choice().to_line();
+            assert!(line.contains(&format!("value={}", entry.value)));
+            assert!(line.contains("icon="));
         }
         assert_eq!(
             selected_action(&entries, "tile"),
@@ -684,15 +518,16 @@ mod tests {
 
     #[test]
     fn chooser_uses_explicit_anchor_without_probing_the_cursor() {
-        let command = menu_command(
+        let spec = menu_spec(
             LayoutCommand::Grid,
             &MenuAnchor {
                 monitor: Some(1),
                 x_offset: 135,
                 y_offset: 30,
-                ..Default::default()
             },
+            &choices(LayoutCommand::Grid),
         );
+        let command = spec.command();
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -713,5 +548,26 @@ mod tests {
             args.windows(2)
                 .any(|pair| pair == ["--placeholder", "Choose window layout"])
         );
+    }
+
+    #[test]
+    fn chooser_centers_when_the_bar_has_no_hit_geometry() {
+        let spec = menu_spec(
+            LayoutCommand::Grid,
+            &MenuAnchor::default(),
+            &choices(LayoutCommand::Grid),
+        );
+        let command = spec.command();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect();
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--position", "center"])
+        );
+        assert!(args.windows(2).any(|pair| pair == ["--monitor", "auto"]));
+        assert!(!args.contains(&"--x-offset"));
+        assert!(!args.contains(&"--y-offset"));
     }
 }

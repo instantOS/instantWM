@@ -20,6 +20,7 @@ use crate::types::{Key, Modifier, WindowId};
 /// The chooser an open menu session belongs to.
 pub(crate) enum ActiveMenu {
     WindowSwitcher(Vec<WindowId>),
+    Layout(crate::bar::layout_menu::LayoutMenuState),
 }
 
 impl ActiveMenu {
@@ -28,6 +29,7 @@ impl ActiveMenu {
     pub(crate) fn apply(self, ctx: &mut WmCtx<'_>, answer: &str) -> Result<(), String> {
         match self {
             Self::WindowSwitcher(windows) => crate::window_menu::apply(ctx, windows, answer),
+            Self::Layout(state) => crate::bar::layout_menu::apply(ctx, state, answer),
         }
     }
 }
