@@ -17,6 +17,39 @@ pub(super) struct Dialog {
     child: Mutex<Option<Child>>,
 }
 
+fn menu_command(
+    presenter: &std::path::Path,
+    prompt: &str,
+    entries: &str,
+    input: Option<&str>,
+) -> Command {
+    let mut command = Command::new(presenter);
+    command
+        .args([
+            "--position",
+            "center",
+            "--border-width",
+            "4",
+            "--width",
+            "auto",
+            "--lines",
+            &entries.lines().count().clamp(1, 14).to_string(),
+            "--placeholder",
+            &clean(prompt),
+            "--insensitive",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0);
+    if let Some(input) = input {
+        command.args(["--input-only", "--initial-text", input]);
+    } else {
+        command.arg("--reject-no-match");
+    }
+    command
+}
+
 impl Dialog {
     pub fn new(presenter: std::path::PathBuf) -> Self {
         Self {
@@ -45,27 +78,7 @@ impl Dialog {
         if self.cancelled() {
             return None;
         }
-        let mut command = Command::new(&self.presenter);
-        command
-            .args([
-                "--position",
-                "center",
-                "--width",
-                "auto",
-                "--lines",
-                &entries.lines().count().clamp(1, 14).to_string(),
-                "--placeholder",
-                &clean(prompt),
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .process_group(0);
-        if let Some(input) = input {
-            command.args(["--input-only", "--initial-text", input]);
-        } else {
-            command.arg("--reject-no-match");
-        }
+        let mut command = menu_command(&self.presenter, prompt, entries, input);
         let stdin = {
             let mut slot = self.child.lock().unwrap();
             // Close may race process creation; serialize both against this slot.
@@ -158,7 +171,7 @@ fn approval_entries(app: &str, shortcuts: &[Shortcut]) -> String {
          {{heading}} Permission\n\
          {{green icon=mdcheck value=allow}} Allow these global shortcuts\n\
          {{icon=mdclose value=cancel}} Cancel\n\
-         {{heading blue}} Bindings — select to edit\n",
+         {{heading blue}} Bindings: select to edit\n",
         clean(app),
     );
     if shortcuts.is_empty() {
@@ -205,11 +218,7 @@ pub(super) fn configure(
     };
     loop {
         let entries = approval_entries(app, &shortcuts);
-        let answer = dialog.menu(
-            "Global shortcuts — select a binding to edit",
-            &entries,
-            None,
-        )?;
+        let answer = dialog.menu("Global shortcuts: select a binding to edit", &entries, None)?;
         if answer == "cancel" {
             return None;
         }
@@ -248,7 +257,7 @@ pub(super) fn configure(
         loop {
             let text = dialog.menu(
                 &format!(
-                    "{} — type e.g. CTRL+ALT+space; empty disables",
+                    "{}: type e.g. CTRL+ALT+space; empty disables",
                     clean(&shortcut.description)
                 ),
                 "",
@@ -366,6 +375,7 @@ mod tests {
         assert!(entries.contains("{icon=mdkeyboard value=edit0} Talkheading: CTRL+space\n"));
         assert!(entries.contains("{fade icon=mdkeyboardoff value=edit1} Muted action: Disabled\n"));
         assert!(!entries.contains("shortcut="));
+        assert!(!entries.contains('—'));
         assert_eq!(
             entries.matches("{green icon=mdcheck value=allow}").count(),
             1
@@ -377,5 +387,23 @@ mod tests {
         assert!(
             approval_entries("test.app", &[]).ends_with("{heading fade} No shortcuts requested\n")
         );
+    }
+
+    #[test]
+    fn menus_match_case_insensitively_and_have_a_border() {
+        let command = menu_command(
+            std::path::Path::new("instantmenu"),
+            "Global shortcuts: select a binding to edit",
+            "{heading blue} Bindings: select to edit\n{icon=mdcheck value=allow} Allow\n",
+            None,
+        );
+        let args: Vec<_> = command
+            .get_args()
+            .map(|argument| argument.to_str().unwrap())
+            .collect();
+        assert!(args.windows(2).any(|pair| pair == ["--border-width", "4"]));
+        assert!(args.contains(&"--insensitive"));
+        assert!(args.contains(&"--reject-no-match"));
+        assert!(!args.iter().any(|argument| argument.contains('—')));
     }
 }
