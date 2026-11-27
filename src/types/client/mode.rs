@@ -156,18 +156,10 @@ impl ClientMode {
 
     /// Whether maximized geometry is the current presentation.
     ///
-    /// An armed fake-fullscreen policy does not change the maximized
-    /// presentation; it only decides what happens on the next fullscreen
-    /// request.
+    /// Fake fullscreen keeps the underlying geometry, including maximization.
     #[inline]
     pub fn is_maximized(self) -> bool {
-        matches!(
-            self.presentation,
-            ClientPresentation::Maximized
-                | ClientPresentation::FakeArmed {
-                    restore: RestoredPresentation::Maximized,
-                }
-        )
+        !self.is_true_fullscreen() && self.has_maximized_presentation()
     }
 
     /// Whether literal client-owned maximization is the current presentation
@@ -177,40 +169,14 @@ impl ClientMode {
     /// that also depends on the monitor's layout presentation.
     #[inline]
     pub fn has_maximized_presentation(self) -> bool {
-        matches!(
-            self.presentation,
-            ClientPresentation::Maximized
-                | ClientPresentation::FakeArmed {
-                    restore: RestoredPresentation::Maximized,
-                }
-                | ClientPresentation::RealFullscreen {
-                    restore: RestoredPresentation::Maximized,
-                }
-                | ClientPresentation::FakeActive {
-                    restore: RestoredPresentation::Maximized,
-                }
-        )
+        self.base_restore() == RestoredPresentation::Maximized
     }
 
     /// Whether the window currently occupies normal tiled/floating geometry.
     ///
-    /// `FakeActive` deliberately counts as normal geometry: fake fullscreen
-    /// changes what the application believes, not which layout slot the window
-    /// occupies. `client_size_is_authoritative` separately excludes it because
-    /// the application's fullscreen-sized buffers must not drive model
-    /// geometry.
+    /// Fake fullscreen preserves the underlying window geometry.
     fn has_normal_window_geometry(self) -> bool {
-        match self.presentation {
-            ClientPresentation::Normal | ClientPresentation::FakeActive { .. } => true,
-            ClientPresentation::FakeArmed {
-                restore: RestoredPresentation::Normal,
-            } => true,
-            ClientPresentation::Maximized
-            | ClientPresentation::FakeArmed {
-                restore: RestoredPresentation::Maximized,
-            }
-            | ClientPresentation::RealFullscreen { .. } => false,
-        }
+        !self.is_true_fullscreen() && !self.has_maximized_presentation()
     }
 
     #[inline]
@@ -299,42 +265,23 @@ impl ClientMode {
 
     #[inline]
     pub(crate) fn with_maximized(self, maximized: bool) -> Self {
-        let presentation = match (self.presentation, maximized) {
-            (ClientPresentation::RealFullscreen { .. }, true) => {
-                ClientPresentation::RealFullscreen {
-                    restore: RestoredPresentation::Maximized,
-                }
+        let restore = if maximized {
+            RestoredPresentation::Maximized
+        } else {
+            RestoredPresentation::Normal
+        };
+        let presentation = match self.presentation {
+            ClientPresentation::RealFullscreen { .. } => {
+                ClientPresentation::RealFullscreen { restore }
             }
-            (
-                ClientPresentation::RealFullscreen {
-                    restore: RestoredPresentation::Maximized,
-                },
-                false,
-            ) => ClientPresentation::RealFullscreen {
-                restore: RestoredPresentation::Normal,
-            },
-            (real @ ClientPresentation::RealFullscreen { .. }, false) => real,
-            (ClientPresentation::FakeActive { .. }, true) => ClientPresentation::FakeActive {
-                restore: RestoredPresentation::Maximized,
-            },
-            (
-                ClientPresentation::FakeActive {
-                    restore: RestoredPresentation::Maximized,
-                },
-                false,
-            ) => ClientPresentation::FakeActive {
-                restore: RestoredPresentation::Normal,
-            },
-            (fake @ ClientPresentation::FakeActive { .. }, false) => fake,
-            (ClientPresentation::FakeArmed { .. }, true) => ClientPresentation::FakeArmed {
-                restore: RestoredPresentation::Maximized,
-            },
-            (ClientPresentation::FakeArmed { .. }, false) => ClientPresentation::FakeArmed {
-                restore: RestoredPresentation::Normal,
-            },
-            (_, true) => ClientPresentation::Maximized,
-            (ClientPresentation::Maximized, false) => ClientPresentation::Normal,
-            (presentation, false) => presentation,
+            ClientPresentation::FakeActive { .. } => ClientPresentation::FakeActive { restore },
+            ClientPresentation::FakeArmed { .. } => ClientPresentation::FakeArmed { restore },
+            ClientPresentation::Normal | ClientPresentation::Maximized if maximized => {
+                ClientPresentation::Maximized
+            }
+            ClientPresentation::Normal | ClientPresentation::Maximized => {
+                ClientPresentation::Normal
+            }
         };
         Self {
             presentation,

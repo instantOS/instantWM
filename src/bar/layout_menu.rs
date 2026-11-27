@@ -133,8 +133,8 @@ impl MenuAnchor {
                 self.monitor
                     .map_or_else(|| "auto".into(), |index| index.to_string()),
             ),
-            x_offset: self.x_offset,
-            y_offset: self.y_offset,
+            x_offset: Some(self.x_offset),
+            y_offset: Some(self.y_offset),
             width: Some("auto".into()),
             line_height: Some("auto".into()),
             columns: Some(2),
@@ -565,7 +565,7 @@ mod tests {
             .collect();
         assert!(args.windows(2).any(|pair| pair == ["--position", "center"]));
         assert!(args.windows(2).any(|pair| pair == ["--monitor", "auto"]));
-        assert!(!args.contains(&"--x-offset"));
-        assert!(!args.contains(&"--y-offset"));
+        assert!(args.windows(2).any(|pair| pair == ["--x-offset", "0"]));
+        assert!(args.windows(2).any(|pair| pair == ["--y-offset", "0"]));
     }
 }

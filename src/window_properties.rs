@@ -9,11 +9,160 @@ use crate::menu::{
     ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuPosition, MenuSpec, shortcut_hint,
 };
 use crate::model::WmModel;
-use crate::types::{Client, ClientPlacement, Key, TagMask, WindowId};
+use crate::types::{Client, ClientMode, ClientPlacement, Key, TagMask, WindowId};
 
 pub(crate) struct WindowPropertiesState {
     win: WindowId,
-    preselect: Option<String>,
+    choices: Vec<PropertyChoice>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PropertyChoice {
+    Lock(bool),
+    Sticky(bool),
+    Placement(ClientMode),
+    FakePolicy(FullscreenState),
+    ExitFullscreen(FullscreenState),
+    RestoreScratchpad { name: String, visible: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FullscreenState {
+    Windowed,
+    Armed,
+    Fake,
+    Real,
+}
+
+impl FullscreenState {
+    fn of(mode: ClientMode) -> Self {
+        if mode.is_true_fullscreen() {
+            Self::Real
+        } else if mode.is_fake_fullscreen() {
+            Self::Fake
+        } else if mode.is_fake_armed() {
+            Self::Armed
+        } else {
+            Self::Windowed
+        }
+    }
+}
+
+impl PropertyChoice {
+    fn for_client(client: &Client) -> Vec<Self> {
+        let mode = client.mode();
+        let fullscreen = FullscreenState::of(mode);
+        let mut choices = vec![Self::Lock(client.is_locked)];
+        if !client.is_scratchpad() {
+            choices.push(Self::Sticky(client.is_sticky));
+            if fullscreen != FullscreenState::Real
+                && !(client.is_fixed_size && mode.placement() == ClientPlacement::Floating)
+            {
+                choices.push(Self::Placement(mode));
+            }
+            choices.push(Self::FakePolicy(fullscreen));
+        }
+        if mode.is_fullscreen() {
+            choices.push(Self::ExitFullscreen(fullscreen));
+        }
+        if let Some(scratchpad) = client.scratchpad() {
+            choices.push(Self::RestoreScratchpad {
+                name: scratchpad.name().to_string(),
+                visible: client.is_scratchpad_visible(),
+            });
+        }
+        choices
+    }
+
+    fn value(&self) -> &'static str {
+        match self {
+            Self::Lock(_) => "lock",
+            Self::Sticky(_) => "sticky",
+            Self::Placement(_) => "floating",
+            Self::FakePolicy(_) => "fake-policy",
+            Self::ExitFullscreen(_) => "fullscreen-exit",
+            Self::RestoreScratchpad { .. } => "scratchpad-restore",
+        }
+    }
+
+    fn row(&self, bindings: &[Key]) -> MenuChoice {
+        let value = self.value();
+        match self {
+            Self::Lock(locked) => toggle_choice(
+                value,
+                format!("Locked: {}", yes_no(*locked)),
+                if *locked { "codlock" } else { "codunlock" },
+                *locked,
+                shortcut_hint(bindings, &NamedAction::ToggleLocked),
+            ),
+            Self::Sticky(sticky) => toggle_choice(
+                value,
+                format!("Sticky: {}", yes_no(*sticky)),
+                "codpin",
+                *sticky,
+                shortcut_hint(bindings, &NamedAction::ToggleSticky),
+            ),
+            Self::Placement(mode) => {
+                let floating = mode.placement() == ClientPlacement::Floating;
+                toggle_choice(
+                    value,
+                    format!("Placement: {}", if floating { "floating" } else { "tiled" }),
+                    "codwindow",
+                    floating,
+                    shortcut_hint(bindings, &NamedAction::ToggleFloating),
+                )
+            }
+            Self::FakePolicy(state) => {
+                let armed = matches!(state, FullscreenState::Armed | FullscreenState::Fake);
+                toggle_choice(
+                    value,
+                    format!(
+                        "Fake fullscreen policy: {}",
+                        if armed { "armed" } else { "disarmed" }
+                    ),
+                    "mdfullscreen",
+                    armed,
+                    shortcut_hint(bindings, &NamedAction::ToggleFakeFullscreen),
+                )
+            }
+            Self::ExitFullscreen(state) => MenuChoice::item(
+                value,
+                format!(
+                    "Exit fullscreen: {}",
+                    if *state == FullscreenState::Fake {
+                        "fake"
+                    } else {
+                        "real"
+                    }
+                ),
+            )
+            .icon("mdfullscreen")
+            .color(MenuColor::Yellow),
+            Self::RestoreScratchpad { name, visible } => MenuChoice::item(
+                value,
+                format!(
+                    "Scratchpad: {name} ({}) — restore",
+                    if *visible { "visible" } else { "hidden" }
+                ),
+            )
+            .icon("codlayers")
+            .color(MenuColor::Green),
+        }
+    }
+
+    fn apply(&self, ctx: &mut WmCtx<'_>, win: WindowId) -> Result<(), String> {
+        match self {
+            Self::Lock(_) => crate::toggles::toggle_locked(ctx, win),
+            Self::Sticky(_) => crate::toggles::toggle_sticky(ctx.core_mut(), win),
+            Self::Placement(_) => crate::floating::toggle_floating(ctx),
+            Self::FakePolicy(_) => crate::client::fullscreen::toggle_fake_fullscreen(ctx),
+            Self::ExitFullscreen(_) => crate::client::set_fullscreen(ctx, win, false),
+            Self::RestoreScratchpad { .. } => {
+                crate::floating::scratchpad_restore(ctx, None, Some(win))?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn yes_no(value: bool) -> &'static str {
@@ -72,11 +221,11 @@ fn menu_spec(
     bindings: &[Key],
     win: WindowId,
     preselect: Option<String>,
-) -> Option<MenuSpec> {
+) -> Option<(MenuSpec, WindowPropertiesState)> {
     let view = model.client_view(win)?;
     let client = view.client;
     let scratchpad = client.is_scratchpad();
-    let mode = client.mode();
+    let properties = PropertyChoice::for_client(client);
     let mut choices = vec![
         MenuChoice::heading(client.title.clone())
             .icon("codwindowactive")
@@ -92,91 +241,7 @@ fn menu_spec(
         MenuChoice::heading("State").color(MenuColor::Blue),
     ];
 
-    choices.push(toggle_choice(
-        "lock",
-        format!("Locked: {}", yes_no(client.is_locked)),
-        if client.is_locked {
-            "codlock"
-        } else {
-            "codunlock"
-        },
-        client.is_locked,
-        shortcut_hint(bindings, &NamedAction::ToggleLocked),
-    ));
-
-    if !scratchpad {
-        choices.push(toggle_choice(
-            "sticky",
-            format!("Sticky: {}", yes_no(client.is_sticky)),
-            "codpin",
-            client.is_sticky,
-            shortcut_hint(bindings, &NamedAction::ToggleSticky),
-        ));
-    }
-
-    if !scratchpad && !mode.is_true_fullscreen() {
-        let floating = client.placement() == ClientPlacement::Floating;
-        choices.push(toggle_choice(
-            "floating",
-            format!("Placement: {}", if floating { "floating" } else { "tiled" }),
-            "codwindow",
-            floating,
-            shortcut_hint(bindings, &NamedAction::ToggleFloating),
-        ));
-    }
-
-    if !scratchpad {
-        // An active fake fullscreen is the armed policy in effect; both report
-        // the same user-visible setting.
-        let armed = mode.is_fake_armed() || mode.is_fake_fullscreen();
-        choices.push(toggle_choice(
-            "fake-policy",
-            format!(
-                "Fake fullscreen policy: {}",
-                if armed { "armed" } else { "disarmed" }
-            ),
-            "mdfullscreen",
-            armed,
-            shortcut_hint(bindings, &NamedAction::ToggleFakeFullscreen),
-        ));
-    }
-
-    if mode.is_fullscreen() {
-        choices.push(
-            MenuChoice::item(
-                "fullscreen-exit",
-                format!(
-                    "Exit fullscreen: {}",
-                    if mode.is_fake_fullscreen() {
-                        "fake"
-                    } else {
-                        "real"
-                    }
-                ),
-            )
-            .icon("mdfullscreen")
-            .color(MenuColor::Yellow),
-        );
-    }
-
-    if let Some(scratchpad) = client.scratchpad() {
-        choices.push(
-            MenuChoice::item(
-                "scratchpad-restore",
-                format!(
-                    "Scratchpad: {} ({}) — restore",
-                    scratchpad.name(),
-                    if client.is_scratchpad_visible() {
-                        "visible"
-                    } else {
-                        "hidden"
-                    }
-                ),
-            )
-            .icon("codlayers")
-            .color(MenuColor::Green),
-        );
-    }
+    choices.extend(properties.iter().map(|property| property.row(bindings)));
 
     choices.push(MenuChoice::heading("Info").color(MenuColor::Blue));
     choices.push(MenuChoice::heading(if scratchpad {
@@ -195,7 +260,7 @@ fn menu_spec(
         choices.push(MenuChoice::heading(format!("Client: {flags}")));
     }
 
-    Some(MenuSpec {
+    let spec = MenuSpec {
         options: MenuOptions {
             prompt: Some("window".into()),
             position: MenuPosition::Center,
@@ -206,7 +271,14 @@ fn menu_spec(
             ..Default::default()
         },
         choices,
-    })
+    };
+    Some((
+        spec,
+        WindowPropertiesState {
+            win,
+            choices: properties,
+        },
+    ))
 }
 
 fn open_target(
@@ -220,16 +292,15 @@ fn open_target(
             &core.state.model,
             &core.state.config.bindings.keys,
             win,
-            preselect.clone(),
+            preselect,
         )
     };
-    let Some(spec) = spec else {
+    let Some((spec, state)) = spec else {
         return Ok(());
     };
-    ctx.core_mut().menus.start(
-        spec,
-        ActiveMenu::WindowProperties(WindowPropertiesState { win, preselect }),
-    )
+    ctx.core_mut()
+        .menus
+        .start(spec, ActiveMenu::WindowProperties(state))
 }
 
 pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
@@ -239,54 +310,29 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     open_target(ctx, win, None)
 }
 
-/// Apply one validated property choice. Returns whether the answer named a
-/// known action, so the menu is only reopened after an actual change.
-fn apply_choice(ctx: &mut WmCtx<'_>, win: WindowId, answer: &str) -> Result<bool, String> {
-    match answer {
-        "lock" => crate::toggles::toggle_locked(ctx, win),
-        "sticky" => crate::toggles::toggle_sticky(ctx.core_mut(), win),
-        "floating" => crate::floating::toggle_floating(ctx),
-        "fake-policy" => crate::client::fullscreen::toggle_fake_fullscreen(ctx),
-        "fullscreen-exit" => crate::client::set_fullscreen(ctx, win, false),
-        "scratchpad-restore" => {
-            crate::floating::scratchpad_restore(ctx, None, Some(win))?;
-        }
-        _ => return Ok(false),
-    }
-    Ok(true)
-}
-
 pub(crate) fn apply(
     ctx: &mut WmCtx<'_>,
     state: WindowPropertiesState,
     answer: &str,
 ) -> Result<(), String> {
-    let WindowPropertiesState { win, preselect } = state;
-    if answer.is_empty() {
+    let WindowPropertiesState { win, choices } = state;
+    let Some(choice) = choices.iter().find(|choice| choice.value() == answer) else {
+        return Ok(());
+    };
+    let model = &ctx.core().state.model;
+    if model.selected_win() != Some(win) {
         return Ok(());
     }
-    // Window-scoped actions are only safe while the captured window is still
-    // the selection; otherwise the answer would silently target another client.
-    if ctx.core().state.model.selected_win() != Some(win)
-        || ctx.core().state.model.client(win).is_none()
-    {
+    let Some(client) = model.client(win) else {
         return Ok(());
-    }
-    if !apply_choice(ctx, win, answer)? {
-        return Ok(());
+    };
+    if PropertyChoice::for_client(client).contains(choice) {
+        choice.apply(ctx, win)?;
     }
     if ctx.core().state.model.selected_win() == Some(win)
-        && ctx.core().state.model.client(win).is_some()
+        && let Err(error) = open_target(ctx, win, Some(answer.to_string()))
     {
-        log::debug!(
-            "window properties: reopening window {win} after {answer} (opened with {preselect:?})"
-        );
-        if let Err(error) = open_target(ctx, win, Some(answer.to_string())) {
-            // Direct callers and tests have no installed presenter; the
-            // property change already happened and must not be reported as a
-            // failure.
-            log::warn!("window properties: {error}");
-        }
+        log::warn!("window properties: {error}");
     }
     Ok(())
 }
@@ -363,6 +409,7 @@ mod tests {
         let bindings = default_keybinds(BackendKind::Wayland);
         menu_spec(&wm.core.state.model, &bindings, win, None)
             .expect("fixture window is managed")
+            .0
             .input()
     }
 
@@ -383,7 +430,7 @@ mod tests {
     fn presenter_is_centered_auto_sized_and_preselects_a_choice() {
         let (wm, win) = fixture(ClientMode::tiled());
         let bindings = default_keybinds(BackendKind::Wayland);
-        let spec = menu_spec(
+        let (spec, _) = menu_spec(
             &wm.core.state.model,
             &bindings,
             win,
@@ -547,72 +594,79 @@ mod tests {
         }
     }
 
+    fn snapshot(wm: &TestWm, win: WindowId) -> WindowPropertiesState {
+        menu_spec(&wm.core.state.model, &[], win, None).unwrap().1
+    }
+
     #[test]
-    fn apply_choice_toggles_lock_and_sticky_and_ignores_unknown_answers() {
+    fn apply_toggles_lock_and_sticky() {
         let (mut wm, win) = fixture(ClientMode::tiled());
-
-        wm.with_ctx(|ctx| assert!(apply_choice(ctx, win, "lock").unwrap()));
-        assert!(wm.core.state.model.client(win).unwrap().is_locked);
-        wm.with_ctx(|ctx| assert!(apply_choice(ctx, win, "lock").unwrap()));
-        assert!(!wm.core.state.model.client(win).unwrap().is_locked);
-
-        wm.with_ctx(|ctx| assert!(apply_choice(ctx, win, "sticky").unwrap()));
-        assert!(wm.core.state.model.client(win).unwrap().is_sticky);
-        wm.with_ctx(|ctx| assert!(apply_choice(ctx, win, "sticky").unwrap()));
-        assert!(!wm.core.state.model.client(win).unwrap().is_sticky);
-
-        for answer in ["", "arbitrary typed text", "2"] {
-            wm.with_ctx(|ctx| assert!(!apply_choice(ctx, win, answer).unwrap()));
+        for expected in [true, false] {
+            for answer in ["lock", "sticky"] {
+                let state = snapshot(&wm, win);
+                wm.with_ctx(|ctx| apply(ctx, state, answer)).unwrap();
+            }
+            let client = wm.core.state.model.client(win).unwrap();
+            assert_eq!(client.is_locked, expected);
+            assert_eq!(client.is_sticky, expected);
         }
     }
 
     #[test]
-    fn apply_keeps_the_toggle_when_the_presenter_cannot_reopen() {
+    fn apply_ignores_dismissal_and_values_missing_from_the_snapshot() {
         let (mut wm, win) = fixture(ClientMode::tiled());
-
-        // No presenter is installed, so the reopen reports an error. The
-        // property change itself must still succeed and stay applied.
-        wm.with_ctx(|ctx| {
-            apply(
-                ctx,
-                WindowPropertiesState {
-                    win,
-                    preselect: None,
-                },
-                "lock",
-            )
+        let state = snapshot(&wm, win);
+        wm.core
+            .state
+            .model
+            .client_mut(win)
+            .unwrap()
+            .enter_fullscreen();
+        wm.with_ctx(|ctx| apply(ctx, state, "fullscreen-exit"))
             .unwrap();
-        });
-        assert!(wm.core.state.model.client(win).unwrap().is_locked);
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_true_fullscreen()
+        );
+
+        for answer in ["", "arbitrary typed text"] {
+            let state = snapshot(&wm, win);
+            wm.with_ctx(|ctx| apply(ctx, state, answer)).unwrap();
+        }
+        assert!(!wm.core.state.model.client(win).unwrap().is_locked);
     }
 
     #[test]
-    fn apply_ignores_dismissal_stale_selection_and_unknown_answers() {
+    fn a_stale_fake_policy_choice_does_not_demote_real_fullscreen() {
         let (mut wm, win) = fixture(ClientMode::tiled());
+        let state = snapshot(&wm, win);
+        wm.core
+            .state
+            .model
+            .client_mut(win)
+            .unwrap()
+            .enter_fullscreen();
+        wm.with_ctx(|ctx| apply(ctx, state, "fake-policy")).unwrap();
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_true_fullscreen()
+        );
+    }
 
-        wm.with_ctx(|ctx| {
-            apply(
-                ctx,
-                WindowPropertiesState {
-                    win,
-                    preselect: None,
-                },
-                "",
-            )
-            .unwrap();
-            apply(
-                ctx,
-                WindowPropertiesState {
-                    win,
-                    preselect: None,
-                },
-                "arbitrary typed text",
-            )
-            .unwrap();
-        });
-        assert!(!wm.core.state.model.client(win).unwrap().is_locked);
-        assert!(!wm.core.state.model.client(win).unwrap().is_sticky);
-
+    #[test]
+    fn apply_ignores_stale_selection() {
+        let (mut wm, win) = fixture(ClientMode::tiled());
+        let state = snapshot(&wm, win);
         let monitor_id = wm.core.state.model.selected_monitor_id();
         let other = WindowId(8);
         add_selected_client(
@@ -624,17 +678,8 @@ mod tests {
                 ..Client::default()
             },
         );
-        wm.with_ctx(|ctx| {
-            apply(
-                ctx,
-                WindowPropertiesState {
-                    win,
-                    preselect: None,
-                },
-                "lock",
-            )
-            .unwrap();
-        });
+        wm.with_ctx(|ctx| apply(ctx, state, "lock")).unwrap();
         assert!(!wm.core.state.model.client(win).unwrap().is_locked);
+        assert!(!wm.core.state.model.client(other).unwrap().is_locked);
     }
 }

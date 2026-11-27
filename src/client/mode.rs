@@ -194,13 +194,6 @@ fn leave_real_fullscreen(client: &mut Client, work_rect: Rect) -> Option<Rect> {
     restore_rect_after_leaving(client, work_rect)
 }
 
-/// Leave active fake fullscreen while keeping the fake-fullscreen policy
-/// armed for the next client fullscreen request.
-fn leave_fake_fullscreen(client: &mut Client, work_rect: Rect) -> Option<Rect> {
-    client.arm_fake_fullscreen();
-    restore_rect_after_leaving(client, work_rect)
-}
-
 /// Whether the application should perceive its window as maximized.
 ///
 /// Tiling presentations deliberately expose the tiled policy through the
@@ -224,13 +217,10 @@ fn owned_client_mut(monitor: &mut Monitor, win: WindowId) -> &mut Client {
 /// Commit the client-local portion of a maximize-state change.
 fn set_client_maximized(client: &mut Client, work_rect: Rect, maximized: bool) -> MaximizedChange {
     let previous_mode = client.mode();
-    if maximized && previous_mode.is_normal_floating() {
-        client.save_floating_geometry(client.geo, work_rect);
-    }
     client.set_maximized_presentation(maximized);
     let current_mode = client.mode();
 
-    if current_mode == previous_mode || current_mode.is_fullscreen() {
+    if current_mode == previous_mode || current_mode.is_true_fullscreen() {
         MaximizedChange::Unchanged
     } else if current_mode.is_maximized() {
         MaximizedChange::Entered { work_rect }
@@ -256,11 +246,7 @@ fn set_fullscreen_on(
         if mode.is_fullscreen() {
             FullscreenChange::Unchanged
         } else if mode.is_fake_armed() {
-            // The application requested fullscreen while the user policy was
-            // armed. Advertise fullscreen but keep the normal layout slot.
-            if mode.is_normal_floating() {
-                client.save_floating_geometry(client.geo, work_rect);
-            }
+            // Keep the current geometry and any saved floating rectangle.
             client.enter_fake_fullscreen();
             FullscreenChange::FakeEntered { restore_rect: None }
         } else {
@@ -271,8 +257,11 @@ fn set_fullscreen_on(
             restore_rect: leave_real_fullscreen(client, work_rect),
         }
     } else if mode.is_fake_fullscreen() {
+        client.arm_fake_fullscreen();
         FullscreenChange::Exited {
-            restore_rect: leave_fake_fullscreen(client, work_rect),
+            // The window already occupies the right geometry. A free-positioned
+            // client can receive that size with the windowed protocol state.
+            restore_rect: mode.is_free_positioned().then_some(client.geo),
         }
     } else {
         FullscreenChange::Unchanged
@@ -308,18 +297,14 @@ fn apply_maximize_intent_on(
 
     if floating_presentation {
         let was_client_maximized = client.mode().has_maximized_presentation();
-        if maximized && !client.mode().is_fullscreen() {
+        if maximized && !was_client_maximized && !client.mode().is_true_fullscreen() {
             // Global floating presentation makes even persistently tiled
             // clients free-positioned, so literal maximization must save
             // their current visible rectangle too.
             client.save_floating_geometry(client.geo, work_rect);
         }
         let mut change = set_client_maximized(client, work_rect, maximized);
-        if !maximized
-            && was_client_maximized
-            && !client.mode().is_fullscreen()
-            && change == (MaximizedChange::Exited { restore_rect: None })
-        {
+        if change == (MaximizedChange::Exited { restore_rect: None }) {
             let restore_rect = crate::client::geometry::resolve_floating_transition(
                 client,
                 work_rect,
@@ -638,6 +623,73 @@ mod tests {
             }
         );
         assert!(model.client(win).unwrap().mode().is_normal_floating());
+    }
+
+    #[test]
+    fn fake_fullscreen_preserves_the_size_a_maximized_window_restores_to() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let monitor = model.monitor_mut(monitor_id).unwrap();
+        monitor.per_tag_state().presentation = PresentationMode::Floating;
+        let work_rect = monitor.work_rect();
+        let original = model.client(win).unwrap().geo;
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
+        model.record_client_geometry(win, work_rect);
+
+        let _ = model.toggle_fake_fullscreen(win).unwrap();
+        let _ = model.set_fullscreen(win, true).unwrap();
+        assert!(model.client(win).unwrap().mode().is_maximized());
+        model.record_client_geometry(win, work_rect);
+        let _ = model.set_fullscreen(win, false).unwrap();
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
+        let restored = model.apply_client_maximize_intent(win, false).unwrap();
+
+        assert_eq!(restored.presentation_rect(), Some(original));
+        let client = model.client(win).unwrap();
+        assert_eq!(client.geo, original);
+        assert!(client.mode().is_fake_armed());
+    }
+
+    #[test]
+    fn fake_fullscreen_preserves_a_snap_and_its_unsnapped_geometry() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let work_rect = model.monitor(monitor_id).unwrap().work_rect();
+        let floating = model.client(win).unwrap().geo;
+        let snapped = Rect::new(work_rect.x, work_rect.y, work_rect.w / 2, work_rect.h);
+        let client = model.client_mut(win).unwrap();
+        client.save_floating_geometry(floating, work_rect);
+        client.snap_status = crate::types::SnapPosition::Left;
+        client.update_geometry(snapped);
+
+        let _ = model.toggle_fake_fullscreen(win).unwrap();
+        let _ = model.set_fullscreen(win, true).unwrap();
+        let exited = model.set_fullscreen(win, false).unwrap();
+
+        assert_eq!(exited.presentation_rect(), Some(snapped));
+        let client = model.client(win).unwrap();
+        assert_eq!(client.geo, snapped);
+        assert_eq!(client.saved_floating_rect(), Some(floating));
+    }
+
+    #[test]
+    fn leaving_maximized_keeps_active_fake_fullscreen_and_restores_geometry() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
+        let monitor = model.monitor_mut(monitor_id).unwrap();
+        monitor.per_tag_state().presentation = PresentationMode::Floating;
+        let work_rect = monitor.work_rect();
+        let original = model.client(win).unwrap().geo;
+        let _ = model.toggle_fake_fullscreen(win).unwrap();
+        let _ = model.set_fullscreen(win, true).unwrap();
+
+        let entered = model.apply_client_maximize_intent(win, true).unwrap();
+        assert_eq!(entered.presentation_rect(), Some(work_rect));
+        model.record_client_geometry(win, work_rect);
+        let left = model.leave_maximized(win).unwrap();
+        assert_eq!(left.change.presentation_rect(), Some(original));
+        let client = model.client(win).unwrap();
+        assert_eq!(client.geo, original);
+        assert!(client.mode().is_fake_fullscreen());
+        assert!(client.mode().is_normal_tiling());
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
     }
 
     #[test]

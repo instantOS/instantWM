@@ -1,8 +1,13 @@
 use crate::config;
 use crate::contexts::WmCtx;
+use crate::core_state::EffectiveConfig;
 
 pub fn reload_config(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let cfg = config::load_config(ctx.backend_kind())?;
+    apply_reload(ctx, cfg)
+}
+
+fn apply_reload(ctx: &mut WmCtx<'_>, cfg: EffectiveConfig) -> Result<(), String> {
     let previous_status_command = ctx.core().state.config.status_command.clone();
 
     ctx.core_mut().state.apply_config(cfg)?;
@@ -44,11 +49,15 @@ mod tests {
 
     use crate::config::ModeConfig;
 
+    fn reload_defaults(ctx: &mut WmCtx<'_>) -> Result<(), String> {
+        apply_reload(ctx, config::default_config(ctx.backend_kind()))
+    }
+
     #[test]
     fn reload_marks_dirty_flags_for_wayland() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
-        wm.with_ctx(reload_config).unwrap();
+        wm.with_ctx(reload_defaults).unwrap();
 
         assert!(wm.core.work.monitor_config);
         assert!(wm.core.work.input_config);
@@ -58,14 +67,12 @@ mod tests {
     #[test]
     fn reload_resynchronizes_monitor_bar_height_on_wayland() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let id = wm
-            .core
-            .state
-            .model
-            .monitors
-            .push(crate::types::Monitor::new_with_values());
+        let mut monitor = crate::types::Monitor::new_with_values();
+        monitor.bar_height = 1;
+        monitor.horizontal_padding = 0;
+        let id = wm.core.state.model.monitors.push(monitor);
 
-        wm.with_ctx(reload_config).unwrap();
+        wm.with_ctx(reload_defaults).unwrap();
 
         let metrics = wm.core.state.config.bar_metrics();
         let monitor = wm.core.state.model.monitor(id).unwrap();
@@ -79,7 +86,7 @@ mod tests {
         wm.core.state.derived.display.width = 3440;
         wm.core.state.derived.display.height = 1440;
 
-        wm.with_ctx(reload_config).unwrap();
+        wm.with_ctx(reload_defaults).unwrap();
 
         assert_eq!(wm.core.state.derived.display.width, 3440);
         assert_eq!(wm.core.state.derived.display.height, 1440);

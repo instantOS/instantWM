@@ -245,8 +245,8 @@ pub(crate) struct MenuOptions {
     pub(crate) placeholder: Option<String>,
     pub(crate) position: MenuPosition,
     pub(crate) monitor: Option<String>,
-    pub(crate) x_offset: i32,
-    pub(crate) y_offset: i32,
+    pub(crate) x_offset: Option<i32>,
+    pub(crate) y_offset: Option<i32>,
     /// `Some("auto")` or a pixel width such as `Some("700")`.
     pub(crate) width: Option<String>,
     /// `Some("auto")` or a pixel height.
@@ -264,8 +264,8 @@ impl Default for MenuOptions {
             placeholder: None,
             position: MenuPosition::Center,
             monitor: None,
-            x_offset: 0,
-            y_offset: 0,
+            x_offset: None,
+            y_offset: None,
             width: None,
             line_height: None,
             columns: None,
@@ -303,11 +303,11 @@ impl MenuSpec {
         if let Some(monitor) = &options.monitor {
             command.args(["--monitor", monitor]);
         }
-        if options.x_offset != 0 {
-            command.args(["--x-offset", &options.x_offset.to_string()]);
+        if let Some(offset) = options.x_offset {
+            command.args(["--x-offset", &offset.to_string()]);
         }
-        if options.y_offset != 0 {
-            command.args(["--y-offset", &options.y_offset.to_string()]);
+        if let Some(offset) = options.y_offset {
+            command.args(["--y-offset", &offset.to_string()]);
         }
         if let Some(width) = &options.width {
             command.args(["--width", width]);
@@ -552,8 +552,8 @@ mod tests {
                 placeholder: Some("Choose a window".into()),
                 position: MenuPosition::TopLeft,
                 monitor: Some("1".into()),
-                x_offset: 12,
-                y_offset: -4,
+                x_offset: Some(0),
+                y_offset: Some(-4),
                 width: Some("auto".into()),
                 line_height: Some("auto".into()),
                 columns: Some(2),
@@ -573,7 +573,7 @@ mod tests {
             ["--placeholder", "Choose a window"],
             ["--position", "top-left"],
             ["--monitor", "1"],
-            ["--x-offset", "12"],
+            ["--x-offset", "0"],
             ["--y-offset", "-4"],
             ["--width", "auto"],
             ["--line-height", "auto"],
