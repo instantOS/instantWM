@@ -194,6 +194,8 @@ fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
         parts.push("Fullscreen");
     } else if state.mode.is_fake_fullscreen() {
         parts.push("FakeFullscreen");
+    } else if state.mode.is_fake_armed() {
+        parts.push("FakeArmed");
     } else if state.mode.is_maximized() {
         parts.push("Maximized");
     } else if state.mode.is_normal_floating() {
@@ -341,8 +343,12 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo]) {
                 "-".to_string()
             };
         let mut flags = Vec::new();
-        if sp.mode.is_fullscreen() {
+        if sp.mode.is_true_fullscreen() {
             flags.push("fullscreen");
+        } else if sp.mode.is_fake_fullscreen() {
+            flags.push("fake fullscreen");
+        } else if sp.mode.is_fake_armed() {
+            flags.push("fake armed");
         } else if sp.mode.is_maximized() {
             flags.push("maximized");
         } else if sp.mode.is_normal_floating() {

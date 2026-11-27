@@ -37,8 +37,10 @@ pub enum WindowModeRequest {
 /// Set a window to floating or tiled mode.
 ///
 /// This is an explicit user/IPC transition: the requested policy becomes
-/// immediately visible, so temporary fullscreen and maximized presentations
-/// are exited first.
+/// immediately visible, so a real fullscreen presentation is exited first.
+/// Fake fullscreen is deliberately preserved: keeping the application
+/// convinced it is fullscreen while the user moves or resizes the window is
+/// the entire point of that mode.
 pub fn set_window_mode(
     ctx: &mut WmCtx,
     win: WindowId,
@@ -53,7 +55,7 @@ pub fn set_window_mode(
     else {
         return WindowModeChange::MissingClient;
     };
-    if mode.is_fullscreen() {
+    if mode.is_true_fullscreen() {
         crate::client::fullscreen::set_fullscreen(ctx, win, false);
     }
     // Leaving fullscreen may restore a maximized presentation; this is a
@@ -318,6 +320,30 @@ mod tests {
         let client = wm.core.state.model.client(win).unwrap();
         assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(client.saved_floating_rect(), Some(saved));
+    }
+
+    #[test]
+    fn fake_fullscreen_survives_explicit_float_and_tile() {
+        let (mut wm, win) = wm_with_client(
+            ClientMode::tiled().as_fake_fullscreen(),
+            Rect::new(100, 90, 500, 400),
+        );
+
+        let change = set_window_mode(
+            &mut wm.test_ctx(),
+            win,
+            WindowModeRequest::Floating(FloatingGeometryIntent::RestoreOrCenter),
+        );
+        assert!(matches!(change, WindowModeChange::ChangedToFloating { .. }));
+        let client = wm.core.state.model.client(win).unwrap();
+        assert!(client.mode().is_fake_fullscreen());
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+
+        let change = set_window_mode(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
+        assert_eq!(change, WindowModeChange::ChangedToTiling);
+        let client = wm.core.state.model.client(win).unwrap();
+        assert!(client.mode().is_fake_fullscreen());
+        assert_eq!(client.placement(), ClientPlacement::Tiling);
     }
 
     #[test]

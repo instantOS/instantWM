@@ -2,10 +2,12 @@
 //!
 //! # Responsibilities
 //!
-//! * [`set_fullscreen`]         – enter/exit real fullscreen, updating
-//!   backend protocol state and animating the transition.
-//! * [`toggle_fake_fullscreen`] – cycle "fake" fullscreen (window fills the
-//!   monitor for the application but still participates in the layout).
+//! * [`set_fullscreen`]         – interpret an application fullscreen request
+//!   through the per-window fake-fullscreen policy, updating backend protocol
+//!   state and animating the transition.
+//! * [`toggle_fake_fullscreen`] – arm/disarm the per-window policy that lets
+//!   an application believe it is fullscreen while the window stays in the
+//!   normal layout.
 //! * [`apply_client_maximize_intent`] – interpret an application's
 //!   maximize/restore request.
 //!
@@ -15,11 +17,12 @@
 //! the border is removed, the window is raised above everything else, and it
 //! is resized to exactly the monitor rectangle.
 //!
-//! *Fake* fullscreen:
-//! the fullscreen protocol signal is advertised (`_NET_WM_STATE_FULLSCREEN`
-//! on X11, xdg_toplevel state on Wayland) so the application believes it is
-//! fullscreen, but the window remains in the normal layout stack with its
-//! border intact.
+//! *Fake* fullscreen is an opt-in per-window policy. Arming it does not
+//! change protocol state or geometry. When the application next requests
+//! fullscreen, the fullscreen protocol signal is advertised
+//! (`_NET_WM_STATE_FULLSCREEN` on X11, xdg_toplevel state on Wayland) so the
+//! application believes it is fullscreen, but the window remains in the normal
+//! layout stack with its border intact and is still movable/resizable.
 //!
 //! All protocol projection flows through [`WmCtx`] delegation methods; this
 //! module contains no backend imports and one shared policy for both
@@ -93,6 +96,13 @@ fn apply_fullscreen_transition(
                 ctx.move_resize(win, rect, MoveResizeOptions::immediate());
             }
             arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
+        }
+        FullscreenChange::PolicyChanged => {
+            // No protocol state or geometry changed, but the bar title badge
+            // and IPC-visible mode did.
+            ctx.core_mut()
+                .bar
+                .invalidate(crate::bar::BarChange::Content);
         }
     }
 }
@@ -219,19 +229,20 @@ fn apply_maximized_change(
 // Fake fullscreen toggle
 // ---------------------------------------------------------------------------
 
-/// Cycle fake-fullscreen on the selected client.
+/// Toggle the per-window fake-fullscreen policy for the selected client.
 ///
-/// The state machine is identical on both backends:
+/// The policy is independent of whether the application is currently
+/// fullscreen:
 ///
-/// ```text
-/// normal ──toggle──► fake ──toggle──► real ──toggle──► fake ──► ...
-/// ```
+/// * Windowed: the toggle arms/disarms the policy without sending any
+///   fullscreen state to the application.
+/// * Real fullscreen: turning the policy on demotes the window to active fake
+///   fullscreen, restoring its normal layout geometry and border.
+/// * Active fake fullscreen: turning the policy off promotes the window back
+///   to real fullscreen, so the application stays fullscreen.
 ///
-/// * Entering fake advertises the fullscreen signal but keeps the window in
-///   the layout with its border.
-/// * Leaving fake promotes to *real* fullscreen through the regular transition:
-///   the window claims the whole monitor and drops its border. Use the regular fullscreen
-///   toggle to leave real fullscreen again.
+/// While the policy is armed, the next application fullscreen request is
+/// granted as fake fullscreen instead of real fullscreen.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     let Some(win) = ctx.core().state.model.selected_win() else {
         return;
@@ -251,7 +262,7 @@ mod tests {
     use crate::types::{Client, Rect, TagMask, WindowId};
 
     #[test]
-    fn fake_fullscreen_cycle_is_shared_by_wayland() {
+    fn fake_fullscreen_policy_is_shared_by_wayland() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.state.config.window.border_width_px = 3;
         let tags = TagMask::single(1).unwrap();
@@ -284,18 +295,25 @@ mod tests {
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.state.model.client(win).unwrap();
+        assert!(client.mode().is_fake_armed());
+        assert!(!client.mode().is_fullscreen());
+        assert_eq!(client.border_width, 3);
+
+        crate::client::fullscreen::set_fullscreen(&mut wm.test_ctx(), win, true);
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_fake_fullscreen());
         assert_eq!(client.border_width, 3);
 
-        toggle_fake_fullscreen(&mut wm.test_ctx());
+        crate::client::fullscreen::set_fullscreen(&mut wm.test_ctx(), win, false);
         let client = wm.core.state.model.client(win).unwrap();
-        assert!(client.mode().is_true_fullscreen());
+        assert!(client.mode().is_fake_armed());
+        assert!(!client.mode().is_fullscreen());
+        // The app is windowed again, so normal single-window tiling rules own
+        // the border width.
         assert_eq!(client.border_width, 0);
-        assert_eq!(client.geo, Rect::new(100, 50, 1200, 800));
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.state.model.client(win).unwrap();
-        assert!(client.mode().is_fake_fullscreen());
-        assert_eq!(client.border_width, 3);
+        assert!(client.mode().is_normal_tiling());
     }
 }

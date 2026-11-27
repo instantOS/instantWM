@@ -405,7 +405,9 @@ fn border_width_for_layout_client(
     is_maximized: bool,
 ) -> i32 {
     let strip_border = client.mode().is_true_fullscreen()
-        || (client.mode().is_normal_tiling() && ((client_count == 1 && is_tiling) || is_maximized));
+        || (!client.mode().is_fake_fullscreen()
+            && client.mode().is_normal_tiling()
+            && ((client_count == 1 && is_tiling) || is_maximized));
 
     if strip_border {
         0

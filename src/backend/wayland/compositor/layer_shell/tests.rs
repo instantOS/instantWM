@@ -649,7 +649,17 @@ fn fullscreen_policy_is_per_output_and_tracks_tags_fake_fullscreen_and_overview(
         .enter_fake_fullscreen();
     f.state.sync_space();
     assert_eq!(f.keyboard_root(), Some(top.root.clone()));
-    f.fullscreen(win, true);
+    // Turning the fake-fullscreen policy off promotes an active fake window
+    // back to real fullscreen.
+    let _ = f
+        .state
+        .wm
+        .core
+        .state
+        .model
+        .toggle_fake_fullscreen(win)
+        .unwrap();
+    f.state.sync_space();
     assert_eq!(
         OutputScenePolicy::for_output(&f.state.wm.core.state, &f.outputs[0].0)
             .layer_band(Layer::Top),

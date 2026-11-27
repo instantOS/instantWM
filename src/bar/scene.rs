@@ -11,6 +11,30 @@ const STARTMENU_ICON_INNER: i32 = 6;
 const TAG_DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 
+/// Nerd Font badges in the window title cell.
+///
+/// Armed fake fullscreen is waiting for the application to request
+/// fullscreen; active fake fullscreen means the application believes it is
+/// fullscreen while the WM keeps the window manageable.
+const FAKE_ARMED_TITLE_ICON: &str = "\u{f0293}"; // nf-md-fullscreen
+const FAKE_ACTIVE_TITLE_ICON: &str = "\u{f0e57}"; // nf-md-picture_in_picture_bottom_right
+
+fn title_with_fake_fullscreen_indicator(client: &Client) -> String {
+    let mode = client.mode();
+    let icon = if mode.is_fake_armed() {
+        Some(FAKE_ARMED_TITLE_ICON)
+    } else if mode.is_fake_fullscreen() {
+        Some(FAKE_ACTIVE_TITLE_ICON)
+    } else {
+        None
+    };
+
+    match icon {
+        Some(icon) => format!("{icon} {}", client.title),
+        None => client.title.clone(),
+    }
+}
+
 fn status_scheme(colors: &StatusColorConfig) -> ColorScheme {
     colors.as_scheme()
 }
@@ -298,7 +322,7 @@ fn collect_title_cells(
         };
         titles.push(TitleCellSnapshot {
             win: c.win,
-            title: c.title.clone(),
+            title: title_with_fake_fullscreen_indicator(c),
             scheme,
             close_scheme,
         });
@@ -1099,6 +1123,27 @@ mod tests {
         assert_eq!(
             scheme.background,
             colors.urgent_colors(SchemeHover::NoHover).background
+        );
+    }
+
+    #[test]
+    fn fake_fullscreen_states_add_nerd_font_title_badges() {
+        let mut client = Client {
+            title: "video".to_string(),
+            ..Client::default()
+        };
+        assert_eq!(title_with_fake_fullscreen_indicator(&client), "video");
+
+        client.set_mode_for_test(crate::types::ClientMode::tiled().as_fake_armed());
+        assert_eq!(
+            title_with_fake_fullscreen_indicator(&client),
+            format!("{FAKE_ARMED_TITLE_ICON} video")
+        );
+
+        client.set_mode_for_test(crate::types::ClientMode::tiled().as_fake_fullscreen());
+        assert_eq!(
+            title_with_fake_fullscreen_indicator(&client),
+            format!("{FAKE_ACTIVE_TITLE_ICON} video")
         );
     }
 

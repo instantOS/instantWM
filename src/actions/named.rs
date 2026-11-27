@@ -234,7 +234,7 @@ define_named_actions!(
     ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().state.config.bindings.modes, mode)?; toggle_mode(ctx, mode); } },
     UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
     Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },
-    ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", doc: "toggle fake fullscreen", run: |ctx| { toggle_fake_fullscreen(ctx); } },
+    ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", doc: "arm or disarm per-window fake fullscreen, or switch an active fullscreen window between managed and real", run: |ctx| { toggle_fake_fullscreen(ctx); } },
     DrawWindow => { name: "draw_window", doc: "start dragging/resizing window", run: |ctx| { draw_window(ctx); } },
     BeginTreePlacement => { name: "begin_tree_placement", doc: "place the focused tiled window within its layout tree", run: |ctx| { let _ = begin_tree_placement(ctx); } },
     PlacementLeft => { name: "placement_left", doc: "select the placement target to the left", run: |ctx| { step_keyboard_tree_placement(ctx, Side::Left); } },

@@ -6,7 +6,7 @@
 
 use crate::layouts::PresentationMode;
 use crate::model::WmModel;
-use crate::types::{Client, ClientMode, ClientPlacement, Monitor, MonitorId, Rect, WindowId};
+use crate::types::{Client, ClientPlacement, Monitor, MonitorId, Rect, WindowId};
 
 /// Presentation state requested by a client before its backend has completed
 /// the authoritative window-management transaction.
@@ -14,37 +14,6 @@ use crate::types::{Client, ClientMode, ClientPlacement, Monitor, MonitorId, Rect
 pub(crate) struct InitialPresentationIntent {
     pub fullscreen: bool,
     pub maximized: bool,
-}
-
-/// Commit only the client-local portion of a fullscreen transition.
-///
-/// Monitor-owned geometry and tag bookkeeping stays with the caller; this helper owns
-/// the mode state machine plus the border-width save/restore. It returns the
-/// mode the client held before the transition together with whether anything
-/// actually changed, so the caller classifies the outcome without re-reading
-/// the client's mode.
-fn set_client_fullscreen(client: &mut Client, fullscreen: bool) -> (ClientMode, bool) {
-    let previous_mode = client.mode();
-    let changed = if fullscreen {
-        !previous_mode.is_true_fullscreen()
-    } else {
-        previous_mode.is_fullscreen()
-    };
-
-    if changed {
-        if fullscreen {
-            client.enter_fullscreen();
-            client.save_border_width();
-            client.border_width = 0;
-        } else {
-            client.restore_mode();
-            if previous_mode.is_true_fullscreen() {
-                client.restore_border_width();
-            }
-        }
-    }
-
-    (previous_mode, changed)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +36,9 @@ pub(crate) enum FullscreenChange {
     FakeEntered {
         restore_rect: Option<Rect>,
     },
+    /// Fake-fullscreen policy changed without advertising any new protocol
+    /// state. Used when arming or disarming while the client is windowed.
+    PolicyChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +57,7 @@ impl FullscreenTransition {
             FullscreenChange::Entered { monitor_rect, .. } => Some(monitor_rect),
             FullscreenChange::Exited { restore_rect }
             | FullscreenChange::FakeEntered { restore_rect } => restore_rect,
-            FullscreenChange::Unchanged => None,
+            FullscreenChange::Unchanged | FullscreenChange::PolicyChanged => None,
         }
     }
 
@@ -190,6 +162,45 @@ fn restore_rect_after_leaving(client: &mut Client, work_rect: Rect) -> Option<Re
     }
 }
 
+/// Enter real fullscreen while preserving the presentation and floating
+/// geometry to restore later.
+fn enter_real_fullscreen(
+    client: &mut Client,
+    monitor_rect: Rect,
+    work_rect: Rect,
+) -> FullscreenChange {
+    let previous_mode = client.mode();
+    if previous_mode.is_normal_floating() {
+        client.save_floating_geometry(client.geo, work_rect);
+    }
+    let projection = if previous_mode.is_normal_floating() && !previous_mode.is_fake_fullscreen() {
+        FullscreenEntryProjection::BackendOnly
+    } else {
+        FullscreenEntryProjection::Animated
+    };
+    client.enter_fullscreen();
+    client.save_border_width();
+    client.border_width = 0;
+    FullscreenChange::Entered {
+        monitor_rect,
+        projection,
+    }
+}
+
+/// Leave real fullscreen and restore the base presentation/border.
+fn leave_real_fullscreen(client: &mut Client, work_rect: Rect) -> Option<Rect> {
+    client.restore_mode();
+    client.restore_border_width();
+    restore_rect_after_leaving(client, work_rect)
+}
+
+/// Leave active fake fullscreen while keeping the fake-fullscreen policy
+/// armed for the next client fullscreen request.
+fn leave_fake_fullscreen(client: &mut Client, work_rect: Rect) -> Option<Rect> {
+    client.arm_fake_fullscreen();
+    restore_rect_after_leaving(client, work_rect)
+}
+
 /// Whether the application should perceive its window as maximized.
 ///
 /// Tiling presentations deliberately expose the tiled policy through the
@@ -239,28 +250,34 @@ fn set_fullscreen_on(
     let monitor_rect = monitor.monitor_rect;
     let work_rect = monitor.work_rect();
     let client = owned_client_mut(monitor, win);
+    let mode = client.mode();
 
-    if fullscreen && client.mode().is_normal_floating() {
-        client.save_floating_geometry(client.geo, work_rect);
-    }
-    let (previous_mode, changed) = set_client_fullscreen(client, fullscreen);
-
-    let change = if !changed {
-        FullscreenChange::Unchanged
-    } else if fullscreen {
-        FullscreenChange::Entered {
-            monitor_rect,
-            projection: if previous_mode.is_normal_floating() {
-                FullscreenEntryProjection::BackendOnly
-            } else {
-                FullscreenEntryProjection::Animated
-            },
+    let change = if fullscreen {
+        if mode.is_fullscreen() {
+            FullscreenChange::Unchanged
+        } else if mode.is_fake_armed() {
+            // The application requested fullscreen while the user policy was
+            // armed. Advertise fullscreen but keep the normal layout slot.
+            if mode.is_normal_floating() {
+                client.save_floating_geometry(client.geo, work_rect);
+            }
+            client.enter_fake_fullscreen();
+            FullscreenChange::FakeEntered { restore_rect: None }
+        } else {
+            enter_real_fullscreen(client, monitor_rect, work_rect)
+        }
+    } else if mode.is_true_fullscreen() {
+        FullscreenChange::Exited {
+            restore_rect: leave_real_fullscreen(client, work_rect),
+        }
+    } else if mode.is_fake_fullscreen() {
+        FullscreenChange::Exited {
+            restore_rect: leave_fake_fullscreen(client, work_rect),
         }
     } else {
-        FullscreenChange::Exited {
-            restore_rect: restore_rect_after_leaving(client, work_rect),
-        }
+        FullscreenChange::Unchanged
     };
+
     FullscreenTransition { monitor_id, change }
 }
 
@@ -412,11 +429,12 @@ impl WmModel {
         Some(protocol_maximized(view.monitor, view.client))
     }
 
-    /// Set real-fullscreen presentation and return the complete backend plan.
+    /// Apply an application fullscreen request through the per-window fake
+    /// fullscreen policy.
     ///
-    /// Fake fullscreen is deliberately considered distinct from real
-    /// fullscreen: a real fullscreen request promotes it, while an
-    /// unfullscreen request leaves either fullscreen variant.
+    /// A client request while fake fullscreen is armed enters fake active
+    /// fullscreen instead of real fullscreen. An unfullscreen request keeps
+    /// the policy armed so the next request is intercepted again.
     pub(crate) fn set_fullscreen(
         &mut self,
         win: WindowId,
@@ -429,27 +447,37 @@ impl WmModel {
         ))
     }
 
-    /// Cycle fake and true fullscreen through the same restore transaction.
+    /// Toggle the per-window fake-fullscreen policy.
+    ///
+    /// * Windowed: arm or disarm the policy without touching protocol state.
+    /// * Real fullscreen: switching the policy on demotes the window to fake
+    ///   active fullscreen immediately.
+    /// * Fake active fullscreen: switching the policy off promotes the window
+    ///   back to real fullscreen so the application stays fullscreen.
     pub(crate) fn toggle_fake_fullscreen(&mut self, win: WindowId) -> Option<FullscreenTransition> {
         let monitor = self.client_owner_mut(win)?;
-        if monitor.client(win)?.mode().is_fake_fullscreen() {
-            return Some(set_fullscreen_on(monitor, win, true));
-        }
-        let was_fullscreen = monitor.client(win)?.mode().is_true_fullscreen();
-        let transition = set_fullscreen_on(monitor, win, false);
+        let monitor_id = monitor.id();
+        let monitor_rect = monitor.monitor_rect;
         let work_rect = monitor.work_rect();
         let client = owned_client_mut(monitor, win);
-        if !was_fullscreen && client.mode().is_normal_floating() {
-            client.save_floating_geometry(client.geo, work_rect);
-        }
-        client.save_border_width();
-        client.enter_fake_fullscreen();
-        Some(FullscreenTransition {
-            monitor_id: transition.monitor_id,
-            change: FullscreenChange::FakeEntered {
-                restore_rect: transition.presentation_rect(),
-            },
-        })
+        let mode = client.mode();
+
+        let change = if mode.is_fake_fullscreen() {
+            enter_real_fullscreen(client, monitor_rect, work_rect)
+        } else if mode.is_true_fullscreen() {
+            let restore_rect = leave_real_fullscreen(client, work_rect);
+            client.save_border_width();
+            client.enter_fake_fullscreen();
+            FullscreenChange::FakeEntered { restore_rect }
+        } else if mode.is_fake_armed() {
+            client.restore_mode();
+            FullscreenChange::PolicyChanged
+        } else {
+            client.arm_fake_fullscreen();
+            FullscreenChange::PolicyChanged
+        };
+
+        Some(FullscreenTransition { monitor_id, change })
     }
 
     /// Interpret an application's maximize/restore control.
@@ -519,7 +547,7 @@ impl WmModel {
 mod tests {
     use super::*;
     use crate::test_support::MonitorBuilder;
-    use crate::types::Client;
+    use crate::types::{Client, ClientMode};
 
     fn model_with_client(mode: ClientMode) -> (WmModel, WindowId, MonitorId) {
         let mut model = WmModel::default();
@@ -543,29 +571,116 @@ mod tests {
     }
 
     #[test]
-    fn fake_fullscreen_cycle_preserves_floating_restore_and_current_border() {
-        let (mut model, win, _) = model_with_client(ClientMode::floating());
+    fn fake_fullscreen_policy_arms_without_sending_protocol_state() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let original = model.client(win).unwrap().geo;
+        model.client_mut(win).unwrap().border_width = 7;
+
+        let transition = model.toggle_fake_fullscreen(win).unwrap();
+
+        assert_eq!(
+            transition,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::PolicyChanged,
+            }
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_fake_armed());
+        assert!(!client.mode().is_fullscreen());
+        assert_eq!(client.geo, original);
+        assert_eq!(client.border_width, 7);
+    }
+
+    #[test]
+    fn armed_policy_intercepts_the_next_client_fullscreen_request() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
         let original = model.client(win).unwrap().geo;
         model.client_mut(win).unwrap().border_width = 7;
         let _ = model.toggle_fake_fullscreen(win).unwrap();
-        assert_eq!(model.client(win).unwrap().border_width, 7);
+
+        let entered = model.set_fullscreen(win, true).unwrap();
+
         assert_eq!(
-            model.client(win).unwrap().saved_floating_rect(),
-            Some(original)
+            entered,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::FakeEntered { restore_rect: None },
+            }
         );
-        let entered = model.toggle_fake_fullscreen(win).unwrap();
-        assert_eq!(
-            entered.presentation_rect(),
-            Some(Rect::new(0, 0, 1920, 1080))
-        );
-        model.record_client_geometry(win, Rect::new(0, 0, 1920, 1080));
-        let fake = model.toggle_fake_fullscreen(win).unwrap();
-        assert_eq!(fake.presentation_rect(), Some(original));
-        assert!(model.client(win).unwrap().mode().is_fake_fullscreen());
-        assert_eq!(model.client(win).unwrap().border_width, 7);
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_fake_fullscreen());
+        assert_eq!(client.geo, original);
+        assert_eq!(client.border_width, 7);
+        assert!(!model.set_fullscreen(win, true).unwrap().changed());
+
         let exited = model.set_fullscreen(win, false).unwrap();
-        assert_eq!(exited.presentation_rect(), Some(original));
+
+        assert_eq!(
+            exited,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::Exited {
+                    restore_rect: Some(original)
+                },
+            }
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_fake_armed());
+        assert_eq!(client.geo, original);
+
+        let disarmed = model.toggle_fake_fullscreen(win).unwrap();
+        assert_eq!(
+            disarmed,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::PolicyChanged,
+            }
+        );
         assert!(model.client(win).unwrap().mode().is_normal_floating());
+    }
+
+    #[test]
+    fn toggling_fake_off_promotes_active_fake_to_real_fullscreen() {
+        let (mut model, win, monitor_id) =
+            model_with_client(ClientMode::tiled().as_fake_fullscreen());
+        model.client_mut(win).unwrap().border_width = 7;
+
+        let transition = model.toggle_fake_fullscreen(win).unwrap();
+
+        assert_eq!(
+            transition,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::Entered {
+                    monitor_rect: Rect::new(0, 0, 1920, 1080),
+                    projection: FullscreenEntryProjection::Animated,
+                },
+            }
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_true_fullscreen());
+        assert_eq!(client.border_width, 0);
+    }
+
+    #[test]
+    fn toggling_fake_on_during_real_fullscreen_demotes_immediately() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
+        let _ = model.set_fullscreen(win, true).unwrap();
+
+        let transition = model.toggle_fake_fullscreen(win).unwrap();
+
+        assert_eq!(
+            transition,
+            FullscreenTransition {
+                monitor_id,
+                change: FullscreenChange::FakeEntered { restore_rect: None },
+            }
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_fake_fullscreen());
+        assert!(!client.mode().is_true_fullscreen());
+        assert_eq!(client.border_width, 2);
     }
 
     #[test]
@@ -657,23 +772,14 @@ mod tests {
     }
 
     #[test]
-    fn real_fullscreen_request_promotes_fake_fullscreen() {
-        let (mut model, win, monitor_id) =
-            model_with_client(ClientMode::tiled().as_fake_fullscreen());
+    fn active_fake_fullscreen_ignores_client_fullscreen_requests() {
+        let (mut model, win, _) = model_with_client(ClientMode::tiled().as_fake_fullscreen());
 
         let transition = model.set_fullscreen(win, true).unwrap();
 
-        assert_eq!(
-            transition,
-            FullscreenTransition {
-                monitor_id,
-                change: FullscreenChange::Entered {
-                    monitor_rect: Rect::new(0, 0, 1920, 1080),
-                    projection: FullscreenEntryProjection::Animated,
-                },
-            }
-        );
-        assert!(model.client(win).unwrap().mode().is_true_fullscreen());
+        assert!(!transition.changed());
+        assert!(model.client(win).unwrap().mode().is_fake_fullscreen());
+        assert!(!model.client(win).unwrap().mode().is_true_fullscreen());
     }
 
     #[test]
