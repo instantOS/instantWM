@@ -105,7 +105,7 @@ pub enum CommandKind {
         #[arg(long, short = 'l')]
         list: bool,
     },
-    /// Show compositor status.
+    /// Show compositor status and last configuration load errors.
     Status,
     /// Reload the compositor configuration.
     Reload,

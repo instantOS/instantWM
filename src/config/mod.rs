@@ -81,14 +81,41 @@ pub fn default_config(backend: crate::backend::BackendKind) -> EffectiveConfig {
         .expect("built-in configuration must be valid")
 }
 
+/// Configuration loaded for initial startup, together with diagnostics from the
+/// attempt. Startup keeps running with built-in defaults when loading fails.
+pub struct StartupConfig {
+    /// Fully resolved configuration to install.
+    pub config: EffectiveConfig,
+    /// Diagnostics from the load attempt. Empty when loading succeeded.
+    pub errors: Vec<String>,
+}
+
+impl StartupConfig {
+    fn from_result(
+        backend: crate::backend::BackendKind,
+        result: Result<EffectiveConfig, String>,
+    ) -> Self {
+        match result {
+            Ok(config) => Self {
+                config,
+                errors: Vec::new(),
+            },
+            Err(error) => {
+                eprintln!("instantwm: {error}; using built-in configuration");
+                Self {
+                    config: default_config(backend),
+                    errors: vec![error],
+                }
+            }
+        }
+    }
+}
+
 /// Load configuration for initial startup. Unlike reload, startup has no
 /// previous valid snapshot to retain, so a reported error falls back to the
 /// built-in configuration and allows the WM to start.
-pub fn load_startup_config(backend: crate::backend::BackendKind) -> EffectiveConfig {
-    load_config(backend).unwrap_or_else(|error| {
-        eprintln!("instantwm: {error}; using built-in configuration");
-        default_config(backend)
-    })
+pub fn load_startup_config(backend: crate::backend::BackendKind) -> StartupConfig {
+    StartupConfig::from_result(backend, load_config(backend))
 }
 
 /// Merge one keybind table, recording its diagnostics instead of failing
@@ -319,6 +346,22 @@ mod resolution_tests {
         };
 
         assert!(error.contains("layout.inner_gap"));
+    }
+
+    #[test]
+    fn startup_failure_falls_back_and_keeps_the_error() {
+        let error = "config parse error in config.toml".to_string();
+
+        let outcome =
+            StartupConfig::from_result(crate::backend::BackendKind::Wayland, Err(error.clone()));
+
+        assert_eq!(outcome.errors, vec![error]);
+        assert_eq!(
+            outcome.config.tags.count,
+            default_config(crate::backend::BackendKind::Wayland)
+                .tags
+                .count
+        );
     }
 
     #[test]
