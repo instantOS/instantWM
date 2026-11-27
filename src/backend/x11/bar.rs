@@ -336,8 +336,11 @@ pub fn reconcile_bars(ctx: &mut crate::contexts::WmCtxX11<'_>) {
         // Newly created windows were absent from earlier stacking projections.
         // Surface/tray synchronization must finish before restoring WM layers.
         if created {
-            ctx.x11
-                .apply_z_order(&crate::layouts::global_z_order(&ctx.core.state.model));
+            ctx.x11_runtime.invalidate_z_order();
+            ctx.x11.apply_z_order(
+                ctx.x11_runtime,
+                &crate::layouts::global_z_order(&ctx.core.state.model),
+            );
         }
         let _ = ctx.x11.conn.flush();
     }

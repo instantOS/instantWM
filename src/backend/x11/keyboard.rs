@@ -4,6 +4,7 @@ use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::keysyms::XK_NUM_LOCK;
 use crate::contexts::WmCtxX11;
 use crate::types::{Key, Keysym, ModMask, Modifier};
+use std::collections::{HashMap, HashSet};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 // The X11 wire type, named apart from `crate::types::ModMask` so the boundary
@@ -24,26 +25,6 @@ pub(crate) fn apply_layout(
     } else {
         Err(format!("setxkbmap exited with {status}"))
     }
-}
-
-/// Install a keyboard layout without waiting for `setxkbmap`.
-///
-/// Startup has no user input yet and reacts to the resulting `MappingNotify`
-/// by refreshing the cached mapping and passive grabs, so the command may
-/// finish while the rest of the session initialization runs. Runtime layout
-/// changes keep the synchronous path so an immediate key press observes the
-/// requested layout.
-pub(crate) fn spawn_layout(
-    layout: &str,
-    variant: &str,
-    options: Option<&str>,
-    model: Option<&str>,
-) -> Result<(), String> {
-    let child = layout_command(layout, variant, options, model)
-        .spawn()
-        .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
-    crate::util::reap_child_async(child);
-    Ok(())
 }
 
 fn layout_command(
@@ -67,56 +48,24 @@ fn layout_command(
 
 type NativeGrab = (u8, u16);
 
-/// Number of applied reconciliations between full re-grabs of the WM chords.
-///
-/// WM grabs are issued unchecked because X11 reports conflicts asynchronously.
-/// Re-grabbing every chord on every scope change retried contested ones, but
-/// costs one request per binding. Applying only the delta keeps the common
-/// desktop/window focus transition to a handful of requests; the periodic full
-/// pass still recovers a chord that another client held during installation.
-const GRAB_FULL_REFRESH_INTERVAL: u32 = 32;
-
-/// Successful application grabs are retained across focus changes. WM grabs
-/// track their scope but remain unchecked; the periodic full pass in
-/// [`GRAB_FULL_REFRESH_INTERVAL`] re-issues them to recover contested chords.
+/// Confirmed server grabs and reusable plans for the two default-mode scopes.
 #[derive(Default)]
 pub(crate) struct KeyGrabs {
-    installed: std::collections::HashSet<NativeGrab>,
-    portal: std::collections::HashSet<NativeGrab>,
-    /// Cached plan for desktop-scope and client-scope focus. The plans depend
-    /// on bindings, keyboard mapping and portal triggers, all of which are
-    /// explicitly invalidated on change; toggling focus only picks a slot.
-    plans: [Option<GrabPlan>; 2],
-    /// Desired set of the last applied plan. Unchanged scope needs no requests.
-    applied: Option<std::collections::HashSet<NativeGrab>>,
-    reconciliations: u32,
+    installed: HashSet<NativeGrab>,
+    default_plans: [Option<GrabPlan>; 2],
 }
 
 impl KeyGrabs {
-    /// Drop cached plans and force the next application to be a full refresh.
-    ///
-    /// Called for every input that `plan_grabs` reads beyond focus scope:
-    /// configuration reloads, keyboard mapping changes, mode switches and
-    /// portal trigger updates.
-    pub(crate) fn invalidate(&mut self) {
-        self.plans = Default::default();
-        self.reconciliations = 0;
-    }
-
-    /// Whether the desired grab set still needs to be projected onto the server.
-    fn needs_refresh(&self, desired: &std::collections::HashSet<NativeGrab>) -> bool {
-        self.reconciliations == 0
-            || self.reconciliations >= GRAB_FULL_REFRESH_INTERVAL
-            || self.applied.as_ref() != Some(desired)
+    pub(crate) fn invalidate_plans(&mut self) {
+        self.default_plans = Default::default();
     }
 }
 
 #[derive(Default)]
 struct GrabPlan {
-    wm: std::collections::HashSet<NativeGrab>,
-    portal:
-        std::collections::HashMap<crate::shortcuts::Trigger, std::collections::HashSet<NativeGrab>>,
-    desired: std::collections::HashSet<NativeGrab>,
+    wm: HashSet<NativeGrab>,
+    portal: HashMap<crate::shortcuts::Trigger, HashSet<NativeGrab>>,
+    desired: HashSet<NativeGrab>,
 }
 
 fn plan_grabs(
@@ -164,136 +113,122 @@ fn plan_grabs(
             }
         }
     }
+    plan.desired = plan
+        .wm
+        .iter()
+        .chain(plan.portal.values().flatten())
+        .copied()
+        .collect();
     plan
 }
 
-/// Update only changed X11 keybindings.
-///
-/// The plan for the current focus scope is cached until an input beyond that
-/// scope changes; a scope toggle therefore projects the focused/desktop delta
-/// instead of every WM chord. Unchanged scopes issue no requests at all.
+/// Reconcile passive grabs, requesting only chords the server hasn't confirmed.
 pub fn grab_keys(
     state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
-    let conn = x11.conn;
-    let root = x11_runtime.root;
     if x11_runtime.keyboard_mapping.keysyms.is_empty() {
         return;
     }
-    let desktop_scope = usize::from(crate::keyboard::desktop_bindings_enabled(
-        state.model.selected_win(),
-        &state.behavior.current_mode,
-    ));
+
+    let mode = &state.behavior.current_mode;
+    let selected = state.model.selected_win();
+    let default_scope = matches!(mode, crate::core_state::ActiveWmMode::Default)
+        .then(|| usize::from(crate::keyboard::desktop_bindings_enabled(selected, mode)));
     let mut grabs = x11_runtime.key_grabs.borrow_mut();
-    let mut plan = match grabs.plans[desktop_scope].take() {
-        Some(plan) => plan,
-        None => {
-            let bindings = crate::keyboard::passive_bindings(
-                &state.config.bindings,
-                state.model.selected_win(),
-                &state.behavior.current_mode,
-            );
-            let triggers = if matches!(
-                state.behavior.current_mode,
-                crate::core_state::ActiveWmMode::Default
-            ) {
+    let plan = default_scope
+        .and_then(|scope| grabs.default_plans[scope].take())
+        .unwrap_or_else(|| {
+            let bindings =
+                crate::keyboard::passive_bindings(&state.config.bindings, selected, mode);
+            let triggers = if default_scope.is_some() {
                 state.shortcuts.triggers()
             } else {
                 Vec::new()
             };
-            let mut plan = plan_grabs(
+            plan_grabs(
                 &x11_runtime.keyboard_mapping,
                 x11_runtime.numlockmask,
                 &bindings,
                 &triggers,
-            );
-            plan.desired = plan
-                .wm
-                .iter()
-                .copied()
-                .chain(plan.portal.values().flatten().copied())
-                .collect();
-            plan
-        }
-    };
+            )
+        });
 
-    if !grabs.needs_refresh(&plan.desired) {
-        grabs.plans[desktop_scope] = Some(plan);
-        return;
-    }
-    let full_refresh =
-        grabs.reconciliations == 0 || grabs.reconciliations >= GRAB_FULL_REFRESH_INTERVAL;
-    for &(code, mods) in grabs.installed.difference(&plan.desired) {
-        let _ = conn.ungrab_key(code, root, XModMask::from(mods));
-    }
-    // Only chords the server is not known to have grabbed need a request. A
-    // periodic full pass retries unchecked WM grabs that may have lost a
-    // contested chord.
-    for &(code, mods) in &plan.wm {
-        if full_refresh || !grabs.installed.contains(&(code, mods)) {
-            let _ = conn.grab_key(
-                false,
-                root,
-                XModMask::from(mods),
-                code,
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-            );
+    let conn = x11.conn;
+    let root = x11_runtime.root;
+    let mut changed = false;
+    grabs.installed.retain(|&(code, mods)| {
+        let keep = plan.desired.contains(&(code, mods));
+        if !keep {
+            let _ = conn.ungrab_key(code, root, XModMask::from(mods));
+            changed = true;
         }
-    }
+        keep
+    });
+
     let mut pending = Vec::new();
-    let mut failed = std::collections::HashSet::new();
-    for (&trigger, trigger_grabs) in &plan.portal {
-        if trigger_grabs.is_empty() {
-            failed.insert(trigger);
-        }
-        for &(code, mods) in trigger_grabs.difference(&grabs.portal) {
-            match conn.grab_key(
-                false,
-                root,
-                XModMask::from(mods),
-                code,
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-            ) {
-                Ok(cookie) => pending.push((trigger, cookie)),
-                Err(_) => {
-                    failed.insert(trigger);
-                }
-            }
+    for &(code, mods) in plan.desired.difference(&grabs.installed) {
+        if let Ok(cookie) = conn.grab_key(
+            false,
+            root,
+            XModMask::from(mods),
+            code,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+        ) {
+            changed = true;
+            pending.push(((code, mods), cookie));
         }
     }
-    // Checking the last request first batches all new grabs into one round trip.
-    for (trigger, cookie) in pending.into_iter().rev() {
-        if cookie.check().is_err() {
-            failed.insert(trigger);
+    // Checking from the last request batches new grabs into one round trip.
+    // A contested WM chord stays absent and can be retried on the next refresh.
+    for (chord, cookie) in pending.into_iter().rev() {
+        if cookie.check().is_ok() {
+            grabs.installed.insert(chord);
         }
     }
-    let mut portal = std::collections::HashSet::new();
-    for (trigger, trigger_grabs) in std::mem::take(&mut plan.portal) {
-        if failed.contains(&trigger) {
-            for (code, mods) in trigger_grabs.difference(&plan.wm) {
-                let _ = conn.ungrab_key(*code, root, XModMask::from(*mods));
-            }
+
+    let mut rejected = Vec::new();
+    for (&trigger, chords) in &plan.portal {
+        if chords.is_empty() || !chords.is_subset(&grabs.installed) {
             log::warn!("global shortcuts: X11 could not grab {}", trigger.text());
             state.shortcuts.reject_trigger(trigger);
-        } else {
-            portal.extend(trigger_grabs);
+            rejected.push(trigger);
         }
     }
-    grabs.installed = std::mem::take(&mut plan.wm);
-    grabs.installed.extend(&portal);
-    grabs.portal = portal;
-    grabs.applied = Some(plan.desired.clone());
-    grabs.reconciliations = if full_refresh {
-        1
+    if rejected.is_empty() {
+        if let Some(scope) = default_scope {
+            grabs.default_plans[scope] = Some(plan);
+        }
     } else {
-        grabs.reconciliations + 1
-    };
-    grabs.plans[desktop_scope] = Some(plan);
-    let _ = conn.flush();
+        grabs.invalidate_plans();
+        // A portal trigger is all-or-nothing. Release its partial grabs
+        // unless a WM binding or another successful trigger uses them.
+        let retained: HashSet<_> = plan
+            .wm
+            .iter()
+            .chain(
+                plan.portal
+                    .iter()
+                    .filter(|(trigger, _)| !rejected.contains(trigger))
+                    .flat_map(|(_, chords)| chords),
+            )
+            .copied()
+            .collect();
+        grabs.installed.retain(|&(code, mods)| {
+            let keep = retained.contains(&(code, mods));
+            if !keep {
+                let _ = conn.ungrab_key(code, root, XModMask::from(mods));
+                changed = true;
+            }
+            keep
+        });
+    }
+
+    if changed {
+        let _ = conn.flush();
+    }
 }
 
 /// Own all keyboard input for a short compositor modal interaction.
@@ -429,7 +364,7 @@ fn render_layout_preview(
             {
                 configure = configure.sibling(u32::from(target));
             }
-            let _ = conn.configure_window(window, &configure);
+            x11.configure_stacking_window(x11_runtime, window, &configure);
             let _ = conn.map_window(window);
         }
     } else {
@@ -507,7 +442,7 @@ pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11Runtim
     }
 
     if mapping_refreshed {
-        x11_runtime.key_grabs.get_mut().invalidate();
+        x11_runtime.key_grabs.get_mut().invalidate_plans();
     }
     mapping_refreshed
 }
@@ -608,28 +543,6 @@ mod mapping_tests {
                 assert!(grabs.contains(&(code, (trigger.mods | locks).bits())));
             }
         }
-    }
-
-    #[test]
-    fn grab_refresh_skips_unchanged_sets_until_full_pass() {
-        let mut grabs = super::KeyGrabs::default();
-        let desired = std::collections::HashSet::from([(8u8, 0u16), (9u8, 4u16)]);
-        // First projection always reaches the server.
-        assert!(grabs.needs_refresh(&desired));
-        grabs.applied = Some(desired.clone());
-        grabs.reconciliations = 1;
-        // Unchanged scope between full passes must not issue requests.
-        assert!(!grabs.needs_refresh(&desired));
-        // A changed set is projected immediately.
-        assert!(grabs.needs_refresh(&std::collections::HashSet::from([(8u8, 0u16)])));
-        // The periodic full pass retries unchecked WM grabs.
-        grabs.reconciliations = super::GRAB_FULL_REFRESH_INTERVAL;
-        assert!(grabs.needs_refresh(&desired));
-        // A config or mapping change produces a full pass regardless of count.
-        grabs.reconciliations = 1;
-        grabs.invalidate();
-        assert!(grabs.needs_refresh(&desired));
-        assert!(grabs.plans.iter().all(Option::is_none));
     }
 
     #[test]

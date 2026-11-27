@@ -66,11 +66,8 @@ pub struct X11RuntimeConfig {
     pub layout_preview_target: Option<WindowId>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
-    /// Root sibling order (bottom-to-top) produced by the last complete
-    /// projection. Focus and layout passes re-project the same order
-    /// constantly; an unchanged projection needs no restack requests. Cleared
-    /// whenever something restacks a managed window outside this path.
-    pub(crate) applied_z_order: Vec<WindowId>,
+    /// Most recent complete root stacking projection.
+    applied_z_order: std::cell::RefCell<Vec<WindowId>>,
     /// Current animation frame interval, derived from the fastest active
     /// CRTC. Refreshed whenever RandR policy is applied so mode switches and
     /// hotplugs take effect without restarting the WM.
@@ -127,7 +124,7 @@ impl Default for X11RuntimeConfig {
             layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
-            applied_z_order: Vec::new(),
+            applied_z_order: Default::default(),
             animation_frame_interval: crate::runtime::animation_frame_interval(None),
             original_border_widths: HashMap::new(),
             client_protocols: HashMap::new(),
@@ -257,6 +254,10 @@ pub(crate) struct ActivePointerGrab {
 }
 
 impl X11RuntimeConfig {
+    pub(crate) fn invalidate_z_order(&self) {
+        self.applied_z_order.borrow_mut().clear();
+    }
+
     /// Replace the animation cadence after the active CRTC set changes.
     pub(crate) fn set_active_refresh_millihertz(&mut self, refresh_millihertz: Option<u32>) {
         self.animation_frame_interval =
@@ -416,12 +417,22 @@ impl X11BackendRef<'_> {
         );
     }
 
-    pub fn raise_window_visual_only(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
+    pub(crate) fn raise_window_visual_only(&self, runtime: &X11RuntimeConfig, window: WindowId) {
+        self.configure_stacking_window(
+            runtime,
+            window.into(),
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
+    }
+
+    pub(crate) fn configure_stacking_window(
+        &self,
+        runtime: &X11RuntimeConfig,
+        window: Window,
+        configure: &ConfigureWindowAux,
+    ) {
+        runtime.invalidate_z_order();
+        let _ = self.conn.configure_window(window, configure);
     }
 
     /// Apply a complete z-order using sibling-based stacking.
@@ -429,27 +440,31 @@ impl X11BackendRef<'_> {
     /// The input is ordered bottom-to-top. The first window is placed at the
     /// bottom via `StackMode::BELOW`, then each subsequent window is stacked
     /// above its predecessor. This produces one `ConfigureWindow` per window
-    /// but they are all buffered in the X11 connection and flushed once by the
-    /// caller, resulting in a single round-trip.
-    pub fn apply_z_order(&self, windows: &[WindowId]) {
+    /// which are buffered and flushed by the caller. Known sibling changes
+    /// outside this projection invalidate the cached order.
+    pub(crate) fn apply_z_order(&self, runtime: &X11RuntimeConfig, windows: &[WindowId]) {
+        let mut applied = runtime.applied_z_order.borrow_mut();
+        if applied.as_slice() == windows {
+            return;
+        }
         let mut prev: Option<Window> = None;
         for &window in windows {
             let x11_win: Window = window.into();
-            if let Some(sibling) = prev {
-                let _ = self.conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new()
-                        .sibling(sibling)
-                        .stack_mode(StackMode::ABOVE),
-                );
+            let configure = if let Some(sibling) = prev {
+                ConfigureWindowAux::new()
+                    .sibling(sibling)
+                    .stack_mode(StackMode::ABOVE)
             } else {
-                let _ = self.conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::BELOW),
-                );
+                ConfigureWindowAux::new().stack_mode(StackMode::BELOW)
+            };
+            if self.conn.configure_window(x11_win, &configure).is_err() {
+                applied.clear();
+                return;
             }
             prev = Some(x11_win);
         }
+        applied.clear();
+        applied.extend_from_slice(windows);
     }
 
     pub fn map_window(&self, window: WindowId) {

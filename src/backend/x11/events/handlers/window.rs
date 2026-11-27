@@ -19,6 +19,9 @@ mod tests;
 /// before using the ordinary destroyed-client cleanup path. Connection failures
 /// and unrelated protocol errors are not evidence of destruction.
 pub fn handle_x11_error(ctx: &mut WmCtxX11<'_>, error: &X11Error) {
+    if error.major_opcode == CONFIGURE_WINDOW_REQUEST {
+        ctx.x11_runtime.invalidate_z_order();
+    }
     let stale = confirmed_stale_client(&ctx.core.state.model, error, |window| {
         ctx.x11
             .conn
@@ -57,6 +60,9 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     let event_win = WindowId::from(e.window);
     let root_win = WindowId::from(ctx.x11_runtime.root);
     if event_win != root_win {
+        if e.event == ctx.x11_runtime.root && e.override_redirect {
+            ctx.x11_runtime.invalidate_z_order();
+        }
         return;
     };
 

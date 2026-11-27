@@ -127,12 +127,7 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_NORMAL);
 
-    let _ = ctx.x11.conn.configure_window(
-        x11_win,
-        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-    );
-    // The explicit raise bypasses the complete projection; invalidate its cache.
-    ctx.x11_runtime.applied_z_order.clear();
+    ctx.x11.raise_window_visual_only(ctx.x11_runtime, win);
 
     ctx.wm_ctx().move_resize(
         win,

@@ -65,10 +65,6 @@ fn wm_init(wm: &mut Wm) {
 
     init_wm_state(wm, root, &screen);
 
-    // No input can reach the WM before the event loop starts, so installing
-    // the configured keymap can overlap the rest of session initialization.
-    crate::keyboard_layout::init_keyboard_layout_background(&mut wm.x11_ctx());
-
     init_atoms(&mut wm.backend);
     init_drw_and_schemes(wm);
 
@@ -76,6 +72,7 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
+    crate::keyboard_layout::init_keyboard_layout(&mut wm.x11_ctx());
     wm.core.bar.invalidate(crate::bar::BarChange::Presentation);
     wm.x11_ctx().reconcile_bars();
     {

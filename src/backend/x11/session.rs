@@ -48,24 +48,6 @@ pub fn export_session_env() {
         }
     }
 
-    // The D-Bus/systemd import is a side effect for future activations, not an
-    // input to this process: its children inherit the variables set above from
-    // the environment. Publishing it on a worker keeps two subprocess spawns
-    // (each a PATH search plus a D-Bus round trip) off the startup path.
-    let vars: Vec<String> = present_session_vars()
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-    let spawn = std::thread::Builder::new()
-        .name("session-env".to_owned())
-        .spawn(move || publish_session_environment(&vars));
-    if let Err(error) = spawn {
-        log::debug!("session environment worker unavailable: {error}");
-    }
-}
-
-/// Remove stale Wayland variables and publish the X11 session environment.
-fn publish_session_environment(vars: &[String]) {
     // `dbus-update-activation-environment` can only set variables, so stale
     // Wayland variables have to be removed from systemd explicitly.
     run_quietly(
@@ -74,14 +56,15 @@ fn publish_session_environment(vars: &[String]) {
             .args(WAYLAND_ONLY_VARS),
     );
 
+    let vars = present_session_vars();
     if vars.is_empty() {
         return;
     }
     let mut import = Command::new("dbus-update-activation-environment");
-    import.arg("--systemd").args(vars);
+    import.arg("--systemd").args(&vars);
     if !run_quietly(&mut import) {
         // Without systemd support, at least update D-Bus activation.
-        run_quietly(Command::new("dbus-update-activation-environment").args(vars));
+        run_quietly(Command::new("dbus-update-activation-environment").args(&vars));
     }
 }
 

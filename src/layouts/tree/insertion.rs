@@ -19,23 +19,17 @@ impl LayoutTree {
         work_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
     ) {
-        let wanted: HashSet<_> = visible.iter().copied().collect();
-        // One leaf walk answers membership for the whole pass. Asking the root
-        // per window would traverse the tree once per insertion, which turns a
-        // bulk adoption (session restore) into quadratic work.
-        let mut present: HashSet<WindowId> = HashSet::with_capacity(visible.len());
+        let mut missing: HashSet<_> = visible.iter().copied().collect();
+        // After walking the leaves, only windows that need insertion remain.
         for window in self.leaves() {
-            if wanted.contains(&window) {
-                present.insert(window);
-            } else {
+            if !missing.remove(&window) {
                 self.remove(window);
             }
         }
 
         for &window in visible {
-            if !present.contains(&window) {
+            if missing.remove(&window) {
                 self.insert_new_absent(window, policy, work_rect, minimums);
-                present.insert(window);
             }
         }
     }
@@ -381,25 +375,6 @@ impl LayoutTree {
         best
     }
 
-    fn insert_new(
-        &mut self,
-        window: WindowId,
-        policy: NewWindowInsertion,
-        work_rect: Rect,
-        minimums: &HashMap<WindowId, Size>,
-    ) {
-        let Some(root) = self.root.take() else {
-            self.root = Some(Node::Window(window));
-            self.clear_insertion_provenance();
-            return;
-        };
-        if root.contains(window) {
-            self.root = Some(root);
-            return;
-        }
-        self.insert_absent(root, window, policy, work_rect, minimums);
-    }
-
     /// Insert a window the caller has proven absent from the tree.
     fn insert_new_absent(
         &mut self,
@@ -413,17 +388,6 @@ impl LayoutTree {
             self.clear_insertion_provenance();
             return;
         };
-        self.insert_absent(root, window, policy, work_rect, minimums);
-    }
-
-    fn insert_absent(
-        &mut self,
-        root: Node,
-        window: WindowId,
-        policy: NewWindowInsertion,
-        work_rect: Rect,
-        minimums: &HashMap<WindowId, Size>,
-    ) {
         if policy == NewWindowInsertion::Force {
             self.insert_force(root, window, work_rect, minimums);
             return;

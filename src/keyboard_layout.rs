@@ -21,20 +21,13 @@ use crate::types::input::StackDirection;
 #[cfg(test)]
 use std::process::Command;
 
-/// Resolved arguments for one configured layout.
-struct LayoutRequest {
-    index: usize,
-    name: String,
-    variant: String,
-    options: Option<String>,
-    model: Option<String>,
-}
-
-/// Resolve the configuration half of a layout switch.
+/// Switch to the configured layout at `index`.
 ///
-/// Folds `caps:swapescape` into the XKB options so the synchronous and
-/// background installs share one policy implementation.
-fn resolve_layout_request(ctx: &WmCtx, index: usize) -> Result<LayoutRequest, String> {
+/// This is the policy half: it resolves the layout entry, folds the
+/// `caps:swapescape` option into the XKB options, and then hands off to
+/// [`WmCtx::apply_keyboard_layout`], which performs the backend-specific
+/// keymap install.
+fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().state.interaction.keyboard_layout;
     let layout = state
         .layout(index)
@@ -55,29 +48,9 @@ fn resolve_layout_request(ctx: &WmCtx, index: usize) -> Result<LayoutRequest, St
             options = Some("caps:swapescape".to_string());
         }
     }
-    Ok(LayoutRequest {
-        index,
-        name: layout.name,
-        variant,
-        options,
-        model,
-    })
-}
 
-/// Switch to the configured layout at `index`.
-///
-/// This is the policy half: it resolves the layout entry, folds the
-/// `caps:swapescape` option into the XKB options, and then hands off to
-/// [`WmCtx::apply_keyboard_layout`], which performs the backend-specific
-/// keymap install.
-fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
-    let request = resolve_layout_request(ctx, index)?;
-    ctx.apply_keyboard_layout(
-        &request.name,
-        &request.variant,
-        request.options.as_deref(),
-        request.model.as_deref(),
-    )?;
+    ctx.apply_keyboard_layout(&layout.name, &variant, options.as_deref(), model.as_deref())?;
+
     ctx.core_mut().state.interaction.keyboard_layout.current = index;
     Ok(())
 }
@@ -163,36 +136,6 @@ pub fn init_keyboard_layout(ctx: &mut WmCtx) {
     if !ctx.core().state.interaction.keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, current);
     }
-}
-
-/// Apply the active keyboard layout during startup without blocking.
-///
-/// The X11 install shells out to `setxkbmap`, whose keymap compilation and
-/// upload cost tens of milliseconds. No user input can arrive before the event
-/// loop starts, and the resulting `MappingNotify` refreshes the cached mapping
-/// and passive grabs, so the install may overlap the remaining setup.
-pub fn init_keyboard_layout_background(ctx: &mut WmCtx) {
-    let current = ctx.core().state.interaction.keyboard_layout.current;
-    if ctx.core().state.interaction.keyboard_layout.is_empty() {
-        return;
-    }
-    let request = match resolve_layout_request(ctx, current) {
-        Ok(request) => request,
-        Err(error) => {
-            eprintln!("instantwm: {error}");
-            return;
-        }
-    };
-    if let Err(error) = ctx.apply_keyboard_layout_background(
-        &request.name,
-        &request.variant,
-        request.options.as_deref(),
-        request.model.as_deref(),
-    ) {
-        eprintln!("instantwm: {error}");
-        return;
-    }
-    ctx.core_mut().state.interaction.keyboard_layout.current = request.index;
 }
 
 /// Add a keyboard layout to the active list.

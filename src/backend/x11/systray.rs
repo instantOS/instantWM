@@ -355,7 +355,8 @@ pub(super) fn sync_xembed_tray(
 
     let conn = x11.conn;
 
-    let _ = conn.configure_window(
+    x11.configure_stacking_window(
+        x11_runtime,
         x11_systray_win,
         &ConfigureWindowAux::new()
             .x(tray_x)

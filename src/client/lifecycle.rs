@@ -3,6 +3,7 @@
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 use crate::model::WmModel;
 use crate::types::{Client, ClientPlacement, MonitorId, TagMask, WindowId};
 use std::collections::VecDeque;
@@ -66,14 +67,8 @@ pub(crate) fn remove_managed_client(
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     }
 
-    crate::focus::refresh_focus_after_selection_deferred_z_order(ctx, previous_focus, None);
-    // Validate the monitor's layout work instead of reconciling the whole
-    // monitor for every destroyed window: a session close destroys hundreds
-    // of clients in one drain, and each removal only makes the surviving set
-    // smaller. Urgent keeps the previous immediate reflow semantics even while
-    // an animation is active; the tick applies the final layout once and
-    // projects z-order.
-    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
+    crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     ctx.core_mut().bar.invalidate_content();
     ctx.sync_client_list();
     Some(removed)

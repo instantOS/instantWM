@@ -240,27 +240,6 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Install a keyboard layout without blocking on the external command.
-    ///
-    /// Wayland keymaps are installed inline because the backend owns the seat;
-    /// only the X11 `setxkbmap` path can be deferred.
-    pub fn apply_keyboard_layout_background(
-        &mut self,
-        layout: &str,
-        variant: &str,
-        options: Option<&str>,
-        model: Option<&str>,
-    ) -> Result<(), String> {
-        match self {
-            WmCtx::X11(_) => {
-                crate::backend::x11::keyboard::spawn_layout(layout, variant, options, model)
-            }
-            WmCtx::Wayland(ctx) => ctx
-                .wayland
-                .set_keyboard_layout(layout, variant, options, model),
-        }
-    }
-
     pub fn backend_kind(&self) -> crate::backend::BackendKind {
         match self {
             WmCtx::X11(_) => crate::backend::BackendKind::X11,
@@ -537,7 +516,7 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx) => {
                 crate::backend::x11::fullscreen::remove_border(&ctx.x11, win);
                 ctx.x11.resize_window(win, monitor_rect);
-                ctx.x11.raise_window_visual_only(win);
+                ctx.x11.raise_window_visual_only(ctx.x11_runtime, win);
             }
             WmCtx::Wayland(_) => {}
         }
@@ -848,9 +827,7 @@ impl<'a> WmCtx<'a> {
         let state = &mut self.core_mut().state;
         state.shortcuts.sync(&state.config.bindings, numlock);
         if let WmCtx::X11(ctx) = self {
-            // Bindings, mode and portal triggers may all have changed; the
-            // cached per-scope plans are no longer valid.
-            ctx.x11_runtime.key_grabs.get_mut().invalidate();
+            ctx.x11_runtime.key_grabs.get_mut().invalidate_plans();
             crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         }
     }
@@ -925,14 +902,7 @@ impl crate::backend::WindowOps for WmCtx<'_> {
     }
     fn apply_z_order(&mut self, windows: &[WindowId]) {
         match self {
-            Self::X11(ctx) => {
-                if ctx.x11_runtime.applied_z_order == windows {
-                    return;
-                }
-                ctx.x11.apply_z_order(windows);
-                ctx.x11_runtime.applied_z_order.clear();
-                ctx.x11_runtime.applied_z_order.extend_from_slice(windows);
-            }
+            Self::X11(ctx) => ctx.x11.apply_z_order(ctx.x11_runtime, windows),
             Self::Wayland(ctx) => ctx.apply_z_order(windows),
         }
     }
