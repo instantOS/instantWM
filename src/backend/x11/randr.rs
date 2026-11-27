@@ -931,7 +931,7 @@ fn apply_mirror_configs(
                 if current.is_some_and(|crtc| {
                     crtc.rotation == source_rotation
                         || (crtc.outputs.len() == 1 && crtc.rotations.contains(source_rotation))
-                }) || free_crtc(&snapshot, output, output.info.crtc, Some(source_rotation))
+                }) || free_crtc(snapshot, output, output.info.crtc, Some(source_rotation))
                     .is_some()
                 {
                     source_rotation
