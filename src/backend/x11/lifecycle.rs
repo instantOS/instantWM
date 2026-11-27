@@ -40,10 +40,7 @@ use crate::backend::x11::{
     update_window_type, update_wm_hints,
 };
 use crate::contexts::WmCtxX11;
-use crate::focus::focus;
 use crate::geometry::GeometryApplyMode;
-use crate::layouts::ArrangeAnimation;
-use crate::layouts::arrange;
 use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -180,6 +177,8 @@ pub fn manage(
             ctx.core.state.model.record_client_geometry(window, rect);
         }
         ctx.x11.raise_window_visual_only(window);
+        // Raising outside the projection invalidates the cached sibling order.
+        ctx.x11_runtime.applied_z_order.clear();
     }
 
     // Adoption happened in `add_client`; the remaining steps only refine the
@@ -217,7 +216,6 @@ pub fn manage(
         ..geo
     };
     ctx.apply_client_geometry(window, offscreen, GeometryApplyMode::VisualOnly);
-    arrange(&mut ctx, Some(monitor_id), ArrangeAnimation::Configured);
     if !initially_hidden {
         ctx.map_window(window);
     }
@@ -226,9 +224,15 @@ pub fn manage(
     // the managed window explicitly ensures backend focus, histories and
     // persistent z-order are updated together. Hidden windows are rejected by
     // focus target resolution and fall back to the previous visible target.
-    focus(&mut ctx, Some(window));
-    let animated = ctx.core().state.config.animations.enabled;
-    crate::animation::run_spawn_animation(&mut ctx, window, animated);
+    //
+    // Layout is queued rather than applied per window: a burst of MapRequests
+    // (session restore, application startup) drains before the next tick, so
+    // the shared layout pass arranges once for the whole batch instead of
+    // reconciling the complete tree per map. That pass also flushes the queued
+    // spawn transition and projects z-order.
+    crate::focus::focus_deferring_z_order(&mut ctx, Some(window));
+    ctx.core_mut()
+        .queue_initial_window_layout(window, monitor_id);
 }
 
 fn read_launch_context(

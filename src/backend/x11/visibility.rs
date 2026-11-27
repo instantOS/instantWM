@@ -131,6 +131,8 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
+    // The explicit raise bypasses the complete projection; invalidate its cache.
+    ctx.x11_runtime.applied_z_order.clear();
 
     ctx.wm_ctx().move_resize(
         win,

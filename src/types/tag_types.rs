@@ -7,6 +7,36 @@ use std::ops::{BitAnd, BitOr, BitXor, Not};
 
 use crate::types::{MAX_TAGS, core::SCRATCHPAD_MASK};
 
+/// Multiplicative hasher for tag-mask map keys.
+///
+/// Per-view state and focus history are keyed by tag masks and are consulted
+/// from every per-client policy helper. A mask is a 20-bit integer, so SipHash
+/// spends more time mixing than the key has entropy; a single odd-constant
+/// multiply produces a well-distributed 32-to-64-bit hash at a fraction of the
+/// cost.
+#[derive(Default)]
+pub struct TagMaskHasher(u64);
+
+impl std::hash::Hasher for TagMaskHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 = (self.0.rotate_left(8) ^ u64::from(byte)).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        }
+    }
+
+    fn write_u32(&mut self, value: u32) {
+        self.0 = u64::from(value).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    }
+}
+
+/// Hash map keyed by a tag mask.
+pub type TagMaskMap<V> =
+    std::collections::HashMap<TagMask, V, std::hash::BuildHasherDefault<TagMaskHasher>>;
+
 /// A type-safe wrapper around tag bitmask operations.
 ///
 /// `TagMask` represents a set of tags as a bitmask, but provides semantic methods

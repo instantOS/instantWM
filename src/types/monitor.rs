@@ -21,6 +21,7 @@ use crate::types::WindowId;
 use crate::types::client::{Client, OrderedClients, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
 use crate::types::input::StackDirection;
+use crate::types::tag_types::TagMaskMap;
 
 mod tag_state;
 mod z_order;
@@ -124,9 +125,9 @@ pub struct Monitor {
     /// Keeping the complete order lets a run of short-lived windows unwind
     /// predictably when closed. Tiled focus is derived from this history rather
     /// than maintained as a second cache that can lose its predecessor.
-    pub(crate) focus_history: HashMap<TagMask, Vec<WindowId>>,
+    pub(crate) focus_history: TagMaskMap<Vec<WindowId>>,
     /// Per-tag runtime presentation, active layout slot, and bar state.
-    pub per_tag: HashMap<TagMask, PerTagState>,
+    pub per_tag: TagMaskMap<PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order. Private because a reorder must not be able
@@ -161,8 +162,8 @@ impl Default for Monitor {
             clients: HashMap::new(),
             stack: Vec::new(),
             selected: None,
-            focus_history: HashMap::new(),
-            per_tag: HashMap::new(),
+            focus_history: TagMaskMap::default(),
+            per_tag: TagMaskMap::default(),
             overview_state: None,
             z_order: ClientZOrder::default(),
             name: String::new(),
@@ -292,7 +293,7 @@ impl Monitor {
     /// [`TagBarPolicy::apply_to`](crate::bar::policy::TagBarPolicy).
     pub fn new_with_values() -> Self {
         Self {
-            per_tag: HashMap::new(),
+            per_tag: TagMaskMap::default(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             prev_tag: Some(1),
             tags: Vec::new(),

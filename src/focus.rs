@@ -239,7 +239,21 @@ fn commit_focus_transition(
 /// presentation), while floating windows retain their explicit stacking order.
 pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) {
     let previous = ctx.core().state.model.selected_win();
-    focus_impl(ctx, win, previous, BackendRefresh::IfNeeded);
+    focus_impl(ctx, win, previous, BackendRefresh::IfNeeded, true);
+    crate::overview::follow_focus(ctx.core_mut());
+}
+
+/// Focus a newly managed window without projecting z-order.
+///
+/// Bulk lifecycle operations (notably a session restore mapping many windows at
+/// once) queue one layout pass for the whole event batch. Each window's focus
+/// change must be committed immediately for input routing, but restacking the
+/// complete window set per map would make adoption quadratic. The queued
+/// arrange ends with a z-order sync, so the projection is not skipped, only
+/// coalesced.
+pub(crate) fn focus_deferring_z_order(ctx: &mut WmCtx, win: Option<WindowId>) {
+    let previous = ctx.core().state.model.selected_win();
+    focus_impl(ctx, win, previous, BackendRefresh::IfNeeded, false);
     crate::overview::follow_focus(ctx.core_mut());
 }
 
@@ -261,7 +275,22 @@ pub(crate) fn refresh_focus_after_selection(
     previous_focus: Option<WindowId>,
     win: Option<WindowId>,
 ) {
-    focus_impl(ctx, win, previous_focus, BackendRefresh::Force);
+    focus_impl(ctx, win, previous_focus, BackendRefresh::Force, true);
+    crate::overview::follow_focus(ctx.core_mut());
+}
+
+/// Re-resolve selection with the same forced backend refresh, leaving z-order
+/// to the layout pass queued behind it.
+///
+/// Bulk teardown re-resolves focus for every destroyed window. Restacking the
+/// surviving set per removal is quadratic and unobservable between ticks; the
+/// queued arrange ends with a z-order sync.
+pub(crate) fn refresh_focus_after_selection_deferred_z_order(
+    ctx: &mut WmCtx,
+    previous_focus: Option<WindowId>,
+    win: Option<WindowId>,
+) {
+    focus_impl(ctx, win, previous_focus, BackendRefresh::Force, false);
     crate::overview::follow_focus(ctx.core_mut());
 }
 
@@ -270,6 +299,7 @@ fn focus_impl(
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
     refresh: BackendRefresh,
+    project_z_order: bool,
 ) {
     use crate::contexts::WmCtx::*;
     let z_order_monitor = match ctx {
@@ -306,7 +336,9 @@ fn focus_impl(
         ctx.core_mut()
             .bar
             .invalidate(crate::bar::BarChange::Presentation);
-        crate::layouts::sync_z_order(ctx);
+        if project_z_order {
+            crate::layouts::sync_z_order(ctx);
+        }
     }
 }
 
@@ -456,7 +488,7 @@ pub fn select_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) -> bool {
     ctx.update_ewmh_desktop_props();
     // Project from the focus that existed before the monitor transaction,
     // rather than trying to reconstruct it from the destination monitor.
-    focus_impl(ctx, None, previous_focus, BackendRefresh::Force);
+    focus_impl(ctx, None, previous_focus, BackendRefresh::Force, true);
     true
 }
 

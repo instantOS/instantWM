@@ -240,6 +240,27 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Install a keyboard layout without blocking on the external command.
+    ///
+    /// Wayland keymaps are installed inline because the backend owns the seat;
+    /// only the X11 `setxkbmap` path can be deferred.
+    pub fn apply_keyboard_layout_background(
+        &mut self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<(), String> {
+        match self {
+            WmCtx::X11(_) => {
+                crate::backend::x11::keyboard::spawn_layout(layout, variant, options, model)
+            }
+            WmCtx::Wayland(ctx) => ctx
+                .wayland
+                .set_keyboard_layout(layout, variant, options, model),
+        }
+    }
+
     pub fn backend_kind(&self) -> crate::backend::BackendKind {
         match self {
             WmCtx::X11(_) => crate::backend::BackendKind::X11,
@@ -827,6 +848,9 @@ impl<'a> WmCtx<'a> {
         let state = &mut self.core_mut().state;
         state.shortcuts.sync(&state.config.bindings, numlock);
         if let WmCtx::X11(ctx) = self {
+            // Bindings, mode and portal triggers may all have changed; the
+            // cached per-scope plans are no longer valid.
+            ctx.x11_runtime.key_grabs.get_mut().invalidate();
             crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         }
     }
@@ -901,7 +925,14 @@ impl crate::backend::WindowOps for WmCtx<'_> {
     }
     fn apply_z_order(&mut self, windows: &[WindowId]) {
         match self {
-            Self::X11(ctx) => ctx.x11.apply_z_order(windows),
+            Self::X11(ctx) => {
+                if ctx.x11_runtime.applied_z_order == windows {
+                    return;
+                }
+                ctx.x11.apply_z_order(windows);
+                ctx.x11_runtime.applied_z_order.clear();
+                ctx.x11_runtime.applied_z_order.extend_from_slice(windows);
+            }
             Self::Wayland(ctx) => ctx.apply_z_order(windows),
         }
     }

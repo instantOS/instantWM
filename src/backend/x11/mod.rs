@@ -66,6 +66,11 @@ pub struct X11RuntimeConfig {
     pub layout_preview_target: Option<WindowId>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
+    /// Root sibling order (bottom-to-top) produced by the last complete
+    /// projection. Focus and layout passes re-project the same order
+    /// constantly; an unchanged projection needs no restack requests. Cleared
+    /// whenever something restacks a managed window outside this path.
+    pub(crate) applied_z_order: Vec<WindowId>,
     /// Current animation frame interval, derived from the fastest active
     /// CRTC. Refreshed whenever RandR policy is applied so mode switches and
     /// hotplugs take effect without restarting the WM.
@@ -122,6 +127,7 @@ impl Default for X11RuntimeConfig {
             layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
+            applied_z_order: Vec::new(),
             animation_frame_interval: crate::runtime::animation_frame_interval(None),
             original_border_widths: HashMap::new(),
             client_protocols: HashMap::new(),

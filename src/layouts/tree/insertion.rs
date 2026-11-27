@@ -20,18 +20,22 @@ impl LayoutTree {
         minimums: &HashMap<WindowId, Size>,
     ) {
         let wanted: HashSet<_> = visible.iter().copied().collect();
-        for stale in self
-            .leaves()
-            .into_iter()
-            .filter(|window| !wanted.contains(window))
-            .collect::<Vec<_>>()
-        {
-            self.remove(stale);
+        // One leaf walk answers membership for the whole pass. Asking the root
+        // per window would traverse the tree once per insertion, which turns a
+        // bulk adoption (session restore) into quadratic work.
+        let mut present: HashSet<WindowId> = HashSet::with_capacity(visible.len());
+        for window in self.leaves() {
+            if wanted.contains(&window) {
+                present.insert(window);
+            } else {
+                self.remove(window);
+            }
         }
 
         for &window in visible {
-            if !self.root.as_ref().is_some_and(|root| root.contains(window)) {
-                self.insert_new(window, policy, work_rect, minimums);
+            if !present.contains(&window) {
+                self.insert_new_absent(window, policy, work_rect, minimums);
+                present.insert(window);
             }
         }
     }
@@ -393,7 +397,33 @@ impl LayoutTree {
             self.root = Some(root);
             return;
         }
+        self.insert_absent(root, window, policy, work_rect, minimums);
+    }
 
+    /// Insert a window the caller has proven absent from the tree.
+    fn insert_new_absent(
+        &mut self,
+        window: WindowId,
+        policy: NewWindowInsertion,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) {
+        let Some(root) = self.root.take() else {
+            self.root = Some(Node::Window(window));
+            self.clear_insertion_provenance();
+            return;
+        };
+        self.insert_absent(root, window, policy, work_rect, minimums);
+    }
+
+    fn insert_absent(
+        &mut self,
+        root: Node,
+        window: WindowId,
+        policy: NewWindowInsertion,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) {
         if policy == NewWindowInsertion::Force {
             self.insert_force(root, window, work_rect, minimums);
             return;
@@ -563,7 +593,7 @@ impl LayoutTree {
                 return None;
             }
             self.clear_insertion_provenance();
-            self.insert_new(window, NewWindowInsertion::Force, work_rect, minimums);
+            self.insert_new_absent(window, NewWindowInsertion::Force, work_rect, minimums);
             Some(window)
         } else {
             let next_primary = candidate_order
