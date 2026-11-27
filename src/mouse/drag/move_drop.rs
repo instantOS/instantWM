@@ -348,7 +348,7 @@ pub fn promote_to_floating(
     ctx: &mut WmCtx,
     win: WindowId,
     intent: FloatingGeometryIntent,
-) -> Option<(Rect, bool)> {
+) -> Option<Rect> {
     // Literal maximization in the global floating presentation restores its
     // free geometry first. Re-evaluating geometry afterwards preserves a
     // tiled client's manual-tree membership while still allowing it to move
@@ -363,7 +363,7 @@ pub(crate) fn promote_restored_client(
     ctx: &mut WmCtx,
     win: WindowId,
     intent: FloatingGeometryIntent,
-) -> Option<(Rect, bool)> {
+) -> Option<Rect> {
     // One view decides everything: floating clients keep their geometry, and
     // tiled clients inside a floating presentation move freely without
     // changing their persistent placement policy, so returning to tiling can
@@ -371,12 +371,12 @@ pub(crate) fn promote_restored_client(
     let monitor_id = {
         let view = ctx.core().state.model.client_view(win)?;
         if view.client.mode().is_normal_floating() {
-            return Some((view.client.geo, false));
+            return Some(view.client.geo);
         }
         if view.monitor.current_layout() == PresentationMode::Floating
             && view.client.mode().is_normal_tiling()
         {
-            return Some((view.client.geo, false));
+            return Some(view.client.geo);
         }
         view.monitor.id()
     };
@@ -391,7 +391,7 @@ pub(crate) fn promote_restored_client(
         }
     };
     arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
-    Some((restored_geometry, true))
+    Some(restored_geometry)
 }
 
 #[cfg(test)]
@@ -440,7 +440,7 @@ mod tests {
             FloatingGeometryIntent::PreservePointerAnchor(crate::types::Point::new(200, 200)),
         );
 
-        assert_eq!(result, Some((Rect::new(100, 100, 400, 300), false)));
+        assert_eq!(result, Some(Rect::new(100, 100, 400, 300)));
         assert_eq!(
             wm.core.state.model.client(win).unwrap().mode(),
             ClientMode::tiled()
@@ -471,7 +471,7 @@ mod tests {
             FloatingGeometryIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
         );
 
-        assert_eq!(result, Some((saved, false)));
+        assert_eq!(result, Some(saved));
         let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_normal_floating());
         assert_eq!(

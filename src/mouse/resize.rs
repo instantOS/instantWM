@@ -122,7 +122,7 @@ pub fn resize_from_point(
         .is_tiling_layout();
     if !is_floating && has_tiling {
         // The maximization teardown already ran at this event's entry point.
-        let Some((new_geo, _)) = promote_restored_client(
+        let Some(new_geo) = promote_restored_client(
             ctx,
             win,
             FloatingGeometryIntent::PreservePointerAnchor(point),
