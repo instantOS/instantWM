@@ -343,9 +343,21 @@ fn visible_close_outline_parts(scene: &BorderScene, scratch: &mut Vec<Rect>) -> 
 /// border strip look like a new element to the damage tracker, so one focused
 /// border change damages every strip on the output. Stable buffers update
 /// their commit counter only when a strip actually changes size or color.
-pub type BorderBufferCache = HashMap<(WindowId, u16), SolidColorBuffer>;
+#[derive(Default)]
+pub struct BorderBufferCache {
+    entries: HashMap<BorderBufferKey, CachedBorderBuffer>,
+}
 
-const CLOSE_OUTLINE_KEY_BASE: u16 = 100;
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum BorderBufferKey {
+    WindowBorder(WindowId, usize),
+    CloseOutline(WindowId, usize),
+}
+
+struct CachedBorderBuffer {
+    buffer: SolidColorBuffer,
+    used: bool,
+}
 
 /// Render border elements from a previously captured displayed scene.
 fn render_border_scene(
@@ -368,30 +380,24 @@ fn render_border_scene(
 
         // Create render elements for visible border parts
         for (part_idx, part) in visible_parts.into_iter().enumerate() {
-            let key = (window.id, part_idx as u16);
+            let key = BorderBufferKey::WindowBorder(window.id, part_idx);
             push_cached_solid(buffers, key, &mut elements, part, color);
         }
     }
 
-    let close_target = scene.close_outline_target;
-    for (part_idx, part) in visible_close_outline_parts(scene, &mut scratch)
-        .into_iter()
-        .enumerate()
-    {
-        if let Some(target) = close_target {
-            let key = (target, CLOSE_OUTLINE_KEY_BASE + part_idx as u16);
+    if let Some(target) = scene.close_outline_target {
+        for (part_idx, part) in visible_close_outline_parts(scene, &mut scratch)
+            .into_iter()
+            .enumerate()
+        {
+            let key = BorderBufferKey::CloseOutline(target, part_idx);
             push_cached_solid(buffers, key, &mut elements, part, close_color);
         }
     }
 
-    // Forget windows that no longer exist. Keys use a reserved high range for
-    // the close outline, so matching by window id covers all entries.
-    let mut live: std::collections::HashSet<WindowId> =
-        windows.iter().map(|window| window.id).collect();
-    if let Some(close_target) = close_target {
-        live.insert(close_target);
-    }
-    buffers.retain(|(id, _), _| live.contains(id));
+    buffers
+        .entries
+        .retain(|_, cached| std::mem::take(&mut cached.used));
 
     elements
 }
@@ -436,7 +442,7 @@ pub(super) fn push_solid(
 /// Push a border strip backed by a persistent buffer.
 fn push_cached_solid(
     buffers: &mut BorderBufferCache,
-    key: (WindowId, u16),
+    key: BorderBufferKey,
     out: &mut Vec<SolidColorRenderElement>,
     rect: Rect,
     color: crate::types::color::Rgba,
@@ -444,12 +450,19 @@ fn push_cached_solid(
     if !rect.size().is_positive() {
         return;
     }
-    let buffer = buffers
+    let size = (rect.w, rect.h);
+    let color = color.into_array();
+    let cached = buffers
+        .entries
         .entry(key)
-        .or_insert_with(|| SolidColorBuffer::new((rect.w, rect.h), color.into_array()));
-    buffer.update((rect.w, rect.h), color.into_array());
+        .or_insert_with(|| CachedBorderBuffer {
+            buffer: SolidColorBuffer::new(size, color),
+            used: false,
+        });
+    cached.buffer.update(size, color);
+    cached.used = true;
     out.push(SolidColorRenderElement::from_buffer(
-        buffer,
+        &cached.buffer,
         (rect.x, rect.y),
         smithay::utils::Scale::from(1.0),
         1.0,
@@ -459,6 +472,12 @@ fn push_cached_solid(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use smithay::backend::renderer::damage::OutputDamageTracker;
+    use smithay::backend::renderer::element::Element;
+    use smithay::utils::Transform;
+
     use super::*;
     use crate::types::color::Rgba;
 
@@ -525,8 +544,6 @@ mod tests {
 
     #[test]
     fn border_buffers_keep_identity_when_only_focus_color_changes() {
-        use smithay::backend::renderer::element::Element;
-
         let colors = BorderColorConfig {
             normal: Rgba::rgb(0.1, 0.1, 0.1),
             tile_focus: Rgba::rgb(0.9, 0.9, 0.9),
@@ -545,30 +562,67 @@ mod tests {
             close_outline_target: None,
         };
         let mut buffers = BorderBufferCache::default();
+        let mut damage_tracker = OutputDamageTracker::new((400, 200), 1.0, Transform::Normal);
 
         let before = render_border_scene(&scene, &colors, Rgba::ZERO, &mut buffers);
-        let before_commits: Vec<_> = before
-            .iter()
-            .map(|element| element.current_commit())
-            .collect();
         assert_eq!(before.len(), 8);
+        damage_tracker.damage_output(0, &before).unwrap();
 
         scene.selected_win = Some(WindowId(2));
         let after = render_border_scene(&scene, &colors, Rgba::ZERO, &mut buffers);
-        let after_commits: Vec<_> = after
-            .iter()
-            .map(|element| element.current_commit())
-            .collect();
+        assert_eq!(after.len(), before.len());
+        for (index, (before, after)) in before.iter().zip(&after).enumerate() {
+            assert_eq!(before.id(), after.id());
+            assert_eq!(before.current_commit() == after.current_commit(), index < 4);
+        }
 
-        // The unfocused window keeps its buffer identity and commit.
-        assert_eq!(&before_commits[..4], &after_commits[..4]);
-        // Only the newly focused window's strips report a change.
-        assert!(
-            before_commits[4..]
+        let (damage, _) = damage_tracker.damage_output(1, &after).unwrap();
+        let damage = damage.expect("focused borders changed color");
+        assert!(after[..4].iter().all(|strip| {
+            !damage
                 .iter()
-                .zip(&after_commits[4..])
-                .all(|(before, after)| before != after)
-        );
+                .any(|rect| rect.overlaps(strip.geometry(1.0.into())))
+        }));
+        assert!(after[4..].iter().all(|strip| {
+            damage
+                .iter()
+                .any(|rect| rect.overlaps(strip.geometry(1.0.into())))
+        }));
+    }
+
+    #[test]
+    fn clipped_border_and_close_outline_have_distinct_ids() {
+        let mut scene = scene_at(Rect::new(20, 20, 550, 100));
+        scene.popup_occluders = (0..100).map(|i| Rect::new(24 + 4 * i, 20, 1, 6)).collect();
+        let colors = BorderColorConfig::default();
+        let close_color = Rgba::rgb(1.0, 0.0, 0.0);
+        let mut buffers = BorderBufferCache::default();
+
+        let borders = render_border_scene(&scene, &colors, close_color, &mut buffers);
+        assert!(borders.len() > 100);
+
+        scene.close_outline_target = scene.selected_win;
+        let with_outline = render_border_scene(&scene, &colors, close_color, &mut buffers);
+        assert!(with_outline.len() > borders.len());
+        let ids: HashSet<_> = with_outline.iter().map(|strip| strip.id()).collect();
+        assert_eq!(ids.len(), with_outline.len());
+        assert_eq!(buffers.entries.len(), with_outline.len());
+        for (border, current) in borders.iter().zip(&with_outline) {
+            assert_eq!(border.id(), current.id());
+            assert_eq!(border.current_commit(), current.current_commit());
+        }
+
+        scene.close_outline_target = None;
+        let without_outline = render_border_scene(&scene, &colors, close_color, &mut buffers);
+        assert_eq!(buffers.entries.len(), borders.len());
+        for (border, current) in borders.iter().zip(&without_outline) {
+            assert_eq!(border.id(), current.id());
+        }
+
+        scene.popup_occluders.clear();
+        let unclipped = render_border_scene(&scene, &colors, close_color, &mut buffers);
+        assert_eq!(unclipped.len(), 4);
+        assert_eq!(buffers.entries.len(), unclipped.len());
     }
 
     #[test]
