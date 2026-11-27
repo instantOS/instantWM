@@ -14,6 +14,8 @@ pub mod hit_test;
 pub mod lifecycle;
 pub mod management;
 pub mod properties;
+#[cfg(test)]
+mod properties_tests;
 pub mod x11;
 
 pub use classify::WindowType;

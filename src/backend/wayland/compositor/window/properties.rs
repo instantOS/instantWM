@@ -1,8 +1,11 @@
 use crate::backend::wayland::compositor::WaylandNativeState;
-use smithay::desktop::Window;
+use smithay::desktop::{PopupKind, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::wayland::compositor::{get_parent, get_role};
+use smithay::wayland::input_method::INPUT_POPUP_SURFACE_ROLE;
 use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::wayland::shell::xdg::{ToplevelSurface, XDG_POPUP_ROLE};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
@@ -257,27 +260,47 @@ impl WaylandNativeState {
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
-    /// Get the window ID for a surface.
-    pub(crate) fn window_id_for_surface(
-        &self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> Option<WindowId> {
-        self.window_index.iter().find_map(|(win, window)| {
-            if window.wl_surface().as_deref() == Some(surface) {
-                return Some(*win);
+    /// Resolve the root surface of the tree that owns `surface`.
+    ///
+    /// `Window::with_surfaces` defines window ownership as the toplevel's
+    /// subsurface tree plus every popup tree tracked by `PopupManager`. Walking
+    /// the same relationships in reverse therefore identifies the window's
+    /// root surface without visiting unrelated windows.
+    ///
+    /// Popups are deliberately not part of Smithay's compositor parent tree, so
+    /// they have to be unwrapped through `PopupManager` instead of
+    /// `compositor::get_parent`.
+    fn surface_root(&self, surface: &WlSurface) -> Option<WlSurface> {
+        let mut current = surface.clone();
+
+        loop {
+            if let Some(parent) = get_parent(&current) {
+                current = parent;
+                continue;
             }
 
-            // A window owns a surface if it's anywhere in its subsurface or popup tree.
-            // Using a large negative offset for surface_under is not reliable.
-            // Instead, we check if the surface's states data map contains our window id.
-            let mut owns_surface = false;
-            window.with_surfaces(|s, _| {
-                if s == surface {
-                    owns_surface = true;
-                }
-            });
+            let role = get_role(&current);
+            if role == Some(XDG_POPUP_ROLE) || role == Some(INPUT_POPUP_SURFACE_ROLE) {
+                current = match self.popups.find_popup(&current)? {
+                    PopupKind::Xdg(popup) => popup.get_parent_surface()?,
+                    PopupKind::InputMethod(popup) => popup.get_parent()?.surface.clone(),
+                };
+                continue;
+            }
 
-            if owns_surface { Some(*win) } else { None }
+            return Some(current);
+        }
+    }
+
+    /// Get the window ID for a surface.
+    pub(crate) fn window_id_for_surface(&self, surface: &WlSurface) -> Option<WindowId> {
+        // A window owns a surface exactly when the surface's root is the
+        // window's root. Resolving the root first keeps the remaining lookup a
+        // direct comparison instead of a tree walk per window.
+        let root = self.surface_root(surface)?;
+
+        self.window_index.iter().find_map(|(win, window)| {
+            (window.wl_surface().as_deref() == Some(&root)).then_some(*win)
         })
     }
 
