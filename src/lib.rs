@@ -25,6 +25,7 @@ mod keyboard;
 mod keyboard_layout;
 pub mod layouts;
 mod logging;
+mod menu;
 mod menu_presenter;
 mod model;
 mod monitor;

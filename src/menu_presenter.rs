@@ -29,17 +29,28 @@ impl<C> MenuHost<C> {
         {
             remove(token);
         }
-        if let Some(mut child) = self.child.take() {
-            // Keep the child unreaped until after signalling, so its pid cannot
-            // be reused for an unrelated process group.
-            if let Ok(pgid) = i32::try_from(child.id()) {
-                crate::util::signal_process_group(pgid, rustix::process::Signal::TERM);
-            } else {
-                let _ = child.kill();
-            }
-            crate::util::reap_child_async(child);
+        if let Some(child) = self.child.take() {
+            finish_child(child);
         }
     }
+}
+
+/// Terminate a presenter that an answer did not already close. instantMENU may
+/// keep running after writing its selection; leaving it alive would linger over
+/// the new focus until the compositor exits.
+pub(crate) fn finish_child(mut child: Child) {
+    // Keep the child unreaped until after signalling, so its pid cannot be
+    // reused for an unrelated process group.
+    if matches!(child.try_wait(), Ok(None)) {
+        if let Ok(pgid) = i32::try_from(child.id()) {
+            if !crate::util::signal_process_group(pgid, rustix::process::Signal::TERM) {
+                let _ = child.kill();
+            }
+        } else {
+            let _ = child.kill();
+        }
+    }
+    crate::util::reap_child_async(child);
 }
 
 impl<C> Drop for MenuHost<C> {
@@ -176,4 +187,82 @@ pub(crate) fn start<C>(
         host.cancel();
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+    use std::os::unix::net::UnixStream;
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+
+    #[test]
+    fn read_answer_waits_for_a_complete_line() {
+        let (mut output, mut writer) = UnixStream::pair().unwrap();
+        output.set_nonblocking(true).unwrap();
+        let mut buffer = Vec::new();
+        writer.write_all(b"win").unwrap();
+        assert_eq!(read_answer(&mut output, &mut buffer).unwrap(), None);
+        writer.write_all(b"dow\nignored").unwrap();
+        assert_eq!(
+            read_answer(&mut output, &mut buffer).unwrap(),
+            Some("window".into())
+        );
+    }
+
+    #[test]
+    fn read_answer_accepts_empty_eof_as_dismissal() {
+        let mut output = Cursor::new(Vec::new());
+        assert_eq!(
+            read_answer(&mut output, &mut Vec::new()).unwrap(),
+            Some(String::new())
+        );
+    }
+
+    #[test]
+    fn read_answer_rejects_oversized_responses() {
+        let mut output = Cursor::new(vec![b'x'; 129]);
+        let error = read_answer(&mut output, &mut Vec::new()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn cancel_removes_the_source_and_releases_the_child() {
+        let event_loop = calloop::EventLoop::<crate::test_support::TestWm>::try_new().unwrap();
+        let mut host: MenuHost<()> = MenuHost::default();
+        install(
+            event_loop.handle(),
+            &mut host,
+            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
+            |_, _, _, _| {},
+        );
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", "exec sleep 30"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .process_group(0);
+        start(&mut host, command, (), String::new()).unwrap();
+        assert!(host.source.is_some());
+        assert!(host.child.is_some());
+        let generation = host.generation;
+        host.cancel();
+        assert!(host.source.is_none());
+        assert!(host.child.is_none());
+        assert_ne!(host.generation, generation);
+    }
+
+    #[test]
+    fn finish_child_accepts_an_already_exited_process() {
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdout(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let _ = child.wait();
+        // Reaping a completed child must not signal a reused process group.
+        finish_child(child);
+    }
 }
