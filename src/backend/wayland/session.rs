@@ -193,13 +193,7 @@ pub fn stop_graphical_session_target() {
 /// Create an auto-named Wayland listening socket, register it with the calloop
 /// event loop so that new client connections are accepted automatically, and
 /// apply the session environment.
-///
-/// Returns the socket name (e.g. `"wayland-1"`) so callers can log it or pass
-/// it to child processes.
-pub fn setup_socket(
-    loop_handle: &LoopHandle<'static, WaylandState>,
-    state: &WaylandState,
-) -> String {
+pub fn setup_socket(loop_handle: &LoopHandle<'static, WaylandState>, state: &WaylandState) {
     let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
     let socket_name = listening_socket
         .socket_name()
@@ -220,7 +214,6 @@ pub fn setup_socket(
         .expect("listening socket source");
 
     let _ = state; // reserved for future use (e.g. security policy)
-    socket_name
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

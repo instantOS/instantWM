@@ -116,12 +116,12 @@ pub(crate) fn apply_client_maximize_intent(ctx: &mut WmCtx<'_>, win: WindowId, m
 
 /// Leave the active maximized presentation, regardless of who requested it.
 ///
-/// Returns `false` when the window is missing or is not currently maximized.
-/// Explicit move and placement operations use this as their single
-/// maximization exit path so client protocol state cannot be left behind.
-pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
+/// No-op when the window is missing or is not currently maximized. Explicit
+/// move and placement operations use this as their single maximization exit
+/// path so client protocol state cannot be left behind.
+pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) {
     let Some(left) = ctx.core_mut().state.model.leave_maximized(win) else {
-        return false;
+        return;
     };
 
     // Project transition geometry first. Native Wayland can then advertise
@@ -130,8 +130,6 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     apply_maximized_change(ctx, win, left.monitor_id, left.change);
 
     sync_owned_client_maximized_signal(ctx, left.monitor_id, win);
-
-    true
 }
 
 /// Project the application-visible maximized state of `win`.

@@ -285,10 +285,7 @@ pub fn set_region_selection_ping(ping: calloop::ping::Ping) {
 /// The watcher thread reads the tool's stdout, reaps it, and delivers the
 /// outcome ([`SelectionOutcome`]) to [`drain_region_selection`], then fires
 /// the registered wake ping.
-///
-/// Returns `false` when the tool could not be started or the watcher thread
-/// could not start.
-pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowId) -> bool {
+pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowId) {
     let mut command = kind.region_selection_command();
 
     command
@@ -298,7 +295,7 @@ pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowI
 
     let runtime = region_selection_runtime();
     let Ok(mut active) = runtime.active.lock() else {
-        return false;
+        return;
     };
 
     let child = match command.spawn() {
@@ -308,7 +305,7 @@ pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowI
                 "region-selection tool {:?} could not be started: {err}",
                 command.get_program()
             );
-            return false;
+            return;
         }
     };
 
@@ -346,28 +343,24 @@ pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowI
             }
         });
 
-    match watcher {
-        Ok(_) => true,
-        Err(err) => {
-            log::warn!("spawning region-selection watcher failed: {err}");
-            // The child already sits in the slot; clean it up so no
-            // orphaned tool outlives its failed watcher. Taken out under a
-            // short lock and reaped outside it, like the takeover path.
-            let cleanup = {
-                let Ok(mut active) = runtime.active.lock() else {
-                    return false;
-                };
-                if active.generation == generation {
-                    active.child.take()
-                } else {
-                    None
-                }
+    if let Err(err) = watcher {
+        log::warn!("spawning region-selection watcher failed: {err}");
+        // The child already sits in the slot; clean it up so no orphaned tool
+        // outlives its failed watcher. Taken out under a short lock and reaped
+        // outside it, like the takeover path.
+        let cleanup = {
+            let Ok(mut active) = runtime.active.lock() else {
+                return;
             };
-            if let Some(mut child) = cleanup {
-                let _ = child.kill();
-                let _ = child.wait();
+            if active.generation == generation {
+                active.child.take()
+            } else {
+                None
             }
-            false
+        };
+        if let Some(mut child) = cleanup {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }

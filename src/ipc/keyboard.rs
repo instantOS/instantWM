@@ -30,7 +30,7 @@ pub fn handle_keyboard_command(ctx: &mut WmCtx<'_>, cmd: KeyboardCommand) -> Res
             } else {
                 StackDirection::Previous
             };
-            let _ = keyboard_layout::cycle_keyboard_layout(ctx, direction);
+            keyboard_layout::cycle_keyboard_layout(ctx, direction);
             Response::ok()
         }
         KeyboardCommand::Set { layouts } => {

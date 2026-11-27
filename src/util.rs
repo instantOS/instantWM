@@ -25,7 +25,7 @@ fn is_lockscreen_cmd(cmd: &str) -> bool {
 pub fn spawn_terminal(
     ctx: &mut WmCtx,
     launcher: instantos_terminal::Launcher,
-) -> Result<u32, String> {
+) -> Result<(), String> {
     let (child, metadata) = launcher
         .spawn_with(|command| prepare_spawn_command(ctx, command))
         .map_err(|error| {
@@ -33,15 +33,12 @@ pub fn spawn_terminal(
             log::error!("instantwm: {message}");
             message
         })?;
-    Ok(record_spawned_child(
-        &mut ctx.core_mut().state.pending_launches,
-        child,
-        metadata,
-    ))
+    record_spawned_child(&mut ctx.core_mut().state.pending_launches, child, metadata);
+    Ok(())
 }
 
-/// Spawn a command directly and return its process id.
-pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> {
+/// Spawn a command directly.
+pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<(), String> {
     if argv.is_empty() {
         return Err("spawn requires a command".to_string());
     }
@@ -52,11 +49,10 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
     let metadata = prepare_spawn_command(ctx, &mut command);
 
     match command.spawn() {
-        Ok(child) => Ok(record_spawned_child(
-            &mut ctx.core_mut().state.pending_launches,
-            child,
-            metadata,
-        )),
+        Ok(child) => {
+            record_spawned_child(&mut ctx.core_mut().state.pending_launches, child, metadata);
+            Ok(())
+        }
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound && is_lockscreen_cmd(primary_cmd) {
                 let fallback = crate::config::generated_keybinds::resolve_lockscreen_command(
@@ -74,12 +70,12 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
                     let fallback_meta = prepare_spawn_command(ctx, &mut fallback_cmd);
                     match fallback_cmd.spawn() {
                         Ok(child) => {
-                            let pid = record_spawned_child(
+                            record_spawned_child(
                                 &mut ctx.core_mut().state.pending_launches,
                                 child,
                                 fallback_meta,
                             );
-                            return Ok(pid);
+                            return Ok(());
                         }
                         Err(fallback_err) => {
                             log::error!(
@@ -126,7 +122,7 @@ pub(crate) fn record_spawned_child(
     pending_launches: &mut VecDeque<PendingLaunch>,
     child: Child,
     metadata: SpawnLaunchMetadata,
-) -> u32 {
+) {
     let pid = child.id();
     record_pending_launch(
         pending_launches,
@@ -140,7 +136,6 @@ pub(crate) fn record_spawned_child(
     // cannot accumulate as zombies and long-lived applications cannot block
     // the event loop.
     reap_child_async(child);
-    pid
 }
 
 pub(crate) fn reap_child_async(child: Child) {
