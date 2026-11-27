@@ -263,7 +263,7 @@ fn collect_tag_cells(
     let mut tags = Vec::new();
     let config = &core.state.config;
     let policy = crate::bar::policy::TagBarPolicy::resolve(config, &mon.name);
-    for tag in crate::tags::bar::visible_tags(
+    for tag in crate::tags::bar::bar_tag_cells(
         mon,
         occupied_tags,
         config.tags.show_icons,

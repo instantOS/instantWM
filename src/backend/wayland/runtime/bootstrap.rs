@@ -37,7 +37,7 @@ pub fn setup_listen_socket(
     loop_handle: &LoopHandle<'static, WaylandState>,
     state: &mut WaylandState,
 ) {
-    let _socket_name = crate::backend::wayland::session::setup_socket(loop_handle, state);
+    crate::backend::wayland::session::setup_socket(loop_handle, state);
     crate::backend::wayland::session::xwayland::setup(state);
     // The compositor claims items' native menu toplevels by PID, so it hands
     // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.

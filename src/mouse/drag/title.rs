@@ -137,7 +137,7 @@ fn begin_move_drag(
         Some((geo, start_point))
     } else {
         let intent = FloatingGeometryIntent::PreservePointerAnchor(position);
-        let (geo, _) = promote_to_floating(ctx, win, intent)?;
+        let geo = promote_to_floating(ctx, win, intent)?;
         if !input.may_warp_pointer() {
             return Some((geo, position));
         }
@@ -191,7 +191,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         }
 
         // Right-click: promote to floating, set up resize mode, warp cursor.
-        let Some((current_geo, _)) = promote_to_floating(
+        let Some(current_geo) = promote_to_floating(
             ctx,
             win,
             FloatingGeometryIntent::PreservePointerAnchor(start_point),

@@ -74,24 +74,22 @@ pub(crate) fn close_menu(core: &mut WmCore) -> bool {
 
 /// Activate a hosted-menu entry in response to a left press.
 ///
-/// Returns `false` when there is no open menu or the entry is not activatable;
-/// the caller then treats the position as consumed-but-inert (parity with the
-/// original Wayland-only implementation).
-pub(crate) fn activate_menu_entry(core: &mut WmCore, idx: usize) -> bool {
+/// Does nothing when there is no open menu or the entry is not activatable;
+/// the caller treats the position as consumed-but-inert.
+pub(crate) fn activate_menu_entry(core: &mut WmCore, idx: usize) {
     let Some(presentation) = core.bar.systray_host.menu.presentation() else {
-        return false;
+        return;
     };
     let Some(entry) = presentation.view.entries.get(idx) else {
-        return false;
+        return;
     };
     if !entry.enabled || entry.separator {
-        return false;
+        return;
     }
     let Some(runtime) = core.bar.systray_host.runtime.as_ref() else {
-        return false;
+        return;
     };
     runtime.dispatch_menu_action(presentation.session_id, entry.action, &presentation.view);
-    true
 }
 
 /// The monitor hosting the tray: the selected one, or the 1-based pinned

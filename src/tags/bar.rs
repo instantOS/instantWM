@@ -3,23 +3,33 @@
 //! This module resolves the leading tag baseline, occupied and selected tags,
 //! and the next empty tag. The baseline comes from the per-output policy
 //! (`bar.tag_slots`, overridable in `[monitors.<name>]`).
+//!
+//! Cell selection intentionally follows [`Monitor::selected_tags`], not
+//! [`Monitor::visible_tags`]. The latter is overview-aware and would allocate
+//! cells for every projected tag.
 
 use crate::types::{Monitor, TagMask};
 
-/// A tag that should be drawn in the bar, with all derived data pre-computed.
-pub(crate) struct VisibleTag<'a> {
+/// A tag cell that should be drawn in the bar, with derived data pre-computed.
+pub(crate) struct BarTagCell<'a> {
     /// Actual tag index into `monitor.tags` / bitmask space.
     pub tag_index: usize,
     /// Display label (name, or icon while icon mode is active).
     pub label: &'a str,
 }
 
-pub(crate) fn visible_tags(
+/// Resolve the tag cells the bar draws for `monitor`.
+///
+/// This is bar presentation, not on-screen client visibility: selection comes
+/// from [`Monitor::selected_tags`]. [`Monitor::visible_tags`] also includes the
+/// temporary overview projection, which must not add empty tags beyond the
+/// baseline.
+pub(crate) fn bar_tag_cells(
     monitor: &Monitor,
     occupied: TagMask,
     show_icons: bool,
     baseline: usize,
-) -> Vec<VisibleTag<'_>> {
+) -> Vec<BarTagCell<'_>> {
     let count = monitor.tags.len();
     let selected = monitor.selected_tags();
     let mut indices: Vec<usize> = (0..count)
@@ -47,7 +57,7 @@ pub(crate) fn visible_tags(
     let mut out = Vec::with_capacity(indices.len());
     for tag_index in indices {
         let tag = &monitor.tags[tag_index];
-        out.push(VisibleTag {
+        out.push(BarTagCell {
             tag_index,
             label: tag.display_label(show_icons),
         });
@@ -80,13 +90,13 @@ mod tests {
     fn labels_follow_icon_mode_and_fall_back_per_tag() {
         let monitor = monitor_with(&[("web", "W"), ("mail", "")]);
 
-        let names: Vec<_> = visible_tags(&monitor, TagMask::all(2), false, 9)
+        let names: Vec<_> = bar_tag_cells(&monitor, TagMask::all(2), false, 9)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
         assert_eq!(names, vec!["web", "mail"]);
 
-        let icons: Vec<_> = visible_tags(&monitor, TagMask::all(2), true, 9)
+        let icons: Vec<_> = bar_tag_cells(&monitor, TagMask::all(2), true, 9)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
@@ -97,13 +107,13 @@ mod tests {
     fn the_baseline_shows_leading_tags() {
         let monitor = monitor_with(&[("a", ""), ("b", ""), ("c", ""), ("d", "")]);
 
-        let all: Vec<_> = visible_tags(&monitor, TagMask::EMPTY, false, 9)
+        let all: Vec<_> = bar_tag_cells(&monitor, TagMask::EMPTY, false, 9)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
         assert_eq!(all, vec!["a", "b", "c", "d"]);
 
-        let two: Vec<_> = visible_tags(&monitor, TagMask::EMPTY, false, 2)
+        let two: Vec<_> = bar_tag_cells(&monitor, TagMask::EMPTY, false, 2)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
@@ -115,7 +125,7 @@ mod tests {
         let mut monitor = monitor_with(&[("1", ""), ("2", ""), ("3", ""), ("4", "")]);
         monitor.set_selected_tags(TagMask::single(4).unwrap());
 
-        let labels: Vec<_> = visible_tags(&monitor, TagMask::single(3).unwrap(), false, 2)
+        let labels: Vec<_> = bar_tag_cells(&monitor, TagMask::single(3).unwrap(), false, 2)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
@@ -125,7 +135,7 @@ mod tests {
     #[test]
     fn the_first_empty_tag_after_full_baseline_is_shown() {
         let monitor = monitor_with(&[("1", ""), ("2", ""), ("3", ""), ("4", "")]);
-        let labels: Vec<_> = visible_tags(&monitor, TagMask::all(2), false, 2)
+        let labels: Vec<_> = bar_tag_cells(&monitor, TagMask::all(2), false, 2)
             .into_iter()
             .map(|tag| tag.label.to_string())
             .collect();
@@ -142,7 +152,7 @@ mod tests {
             ("5", ""),
             ("6", ""),
         ]);
-        let indices: Vec<_> = visible_tags(&monitor, TagMask::all(5), false, 5)
+        let indices: Vec<_> = bar_tag_cells(&monitor, TagMask::all(5), false, 5)
             .into_iter()
             .map(|tag| tag.tag_index)
             .collect();
@@ -159,7 +169,7 @@ mod tests {
             ("5", ""),
             ("6", ""),
         ]);
-        let indices: Vec<_> = visible_tags(&monitor, TagMask::single(6).unwrap(), false, 2)
+        let indices: Vec<_> = bar_tag_cells(&monitor, TagMask::single(6).unwrap(), false, 2)
             .into_iter()
             .map(|tag| tag.tag_index)
             .collect();
@@ -177,7 +187,7 @@ mod tests {
             ("6", ""),
         ]);
         let occupied = TagMask::all(2) | TagMask::single(5).unwrap();
-        let indices: Vec<_> = visible_tags(&monitor, occupied, false, 2)
+        let indices: Vec<_> = bar_tag_cells(&monitor, occupied, false, 2)
             .into_iter()
             .map(|tag| tag.tag_index)
             .collect();
@@ -188,7 +198,7 @@ mod tests {
     fn a_selected_empty_tag_farther_right_does_not_replace_the_next_empty_tag() {
         let mut monitor = monitor_with(&[("1", ""), ("2", ""), ("3", ""), ("4", "")]);
         monitor.set_selected_tags(TagMask::single(4).unwrap());
-        let tags = visible_tags(&monitor, TagMask::all(2), false, 2);
+        let tags = bar_tag_cells(&monitor, TagMask::all(2), false, 2);
         assert_eq!(
             tags.iter().map(|tag| tag.tag_index).collect::<Vec<_>>(),
             vec![0, 1, 2, 3]
