@@ -4,10 +4,8 @@
 //! install separately. [`MenuManager`] owns the event source once; a chooser
 //! starts a session with an [`ActiveMenu`] describing how an answer is applied.
 //!
-//! Shared rows/options and shortcut hints land here ahead of the choosers that
-//! consume them, so the module intentionally exports a slightly wider API than
-//! the current window switcher uses.
-#![allow(dead_code)]
+//! Shared rows/options and shortcut hints live here so every chooser formats
+//! instantMENU metadata the same way.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -21,6 +19,7 @@ use crate::types::{Key, Modifier, WindowId};
 pub(crate) enum ActiveMenu {
     WindowSwitcher(Vec<WindowId>),
     Layout(crate::bar::layout_menu::LayoutMenuState),
+    WindowProperties(crate::window_properties::WindowPropertiesState),
 }
 
 impl ActiveMenu {
@@ -30,6 +29,7 @@ impl ActiveMenu {
         match self {
             Self::WindowSwitcher(windows) => crate::window_menu::apply(ctx, windows, answer),
             Self::Layout(state) => crate::bar::layout_menu::apply(ctx, state, answer),
+            Self::WindowProperties(state) => crate::window_properties::apply(ctx, state, answer),
         }
     }
 }
@@ -60,17 +60,6 @@ impl MenuManager {
             return Ok(());
         }
         menu_presenter::start(&mut self.host, spec.command(), session, spec.input())
-    }
-
-    /// Replace the current session. A future reopen (for example a scrolling
-    /// picker) uses this instead of silently dropping the old generation.
-    pub(crate) fn replace(&mut self, spec: MenuSpec, session: ActiveMenu) -> Result<(), String> {
-        self.cancel();
-        self.start(spec, session)
-    }
-
-    pub(crate) fn cancel(&mut self) {
-        self.host.cancel();
     }
 }
 
@@ -189,7 +178,11 @@ impl MenuChoice {
 }
 
 /// Cell color understood by instantMENU.
+///
+/// The full palette stays available for future choosers even when the current
+/// menus only use a subset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum MenuColor {
     Normal,
     Fade,
@@ -213,7 +206,11 @@ impl MenuColor {
 }
 
 /// Anchor understood by instantMENU.
+///
+/// The full set stays available for future choosers even when the current
+/// menus only anchor at the center or below the bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum MenuPosition {
     Center,
     TopLeft,
@@ -649,7 +646,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(menus.host.child.as_ref().map(|child| child.id()), Some(pid));
-        menus.cancel();
+        menus.host.cancel();
         assert!(!menus.is_open());
     }
 

@@ -204,8 +204,10 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let mut entries = choices(active);
     apply_shortcuts(&mut entries, &core.state.config.bindings.keys);
     let spec = menu_spec(active, &anchor, &entries);
-    core.menus
-        .start(spec, ActiveMenu::Layout(LayoutMenuState { context, entries }))
+    core.menus.start(
+        spec,
+        ActiveMenu::Layout(LayoutMenuState { context, entries }),
+    )
 }
 
 /// Apply a presenter answer against the snapshot taken when the menu opened.
@@ -276,11 +278,10 @@ mod tests {
     fn presenter_receives_shortcuts_and_returns_an_action_without_ipc() {
         let mut wm = wm_with_monitor();
         let mut event_loop = calloop::EventLoop::try_new().unwrap();
-        wm.core
-            .menus
-            .install(event_loop.handle(), |wm: &mut crate::test_support::TestWm| {
-                wm.test_ctx()
-            });
+        wm.core.menus.install(
+            event_loop.handle(),
+            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
+        );
         let (spec, state) = session(&wm);
         let mut command = Command::new("sh");
         command.args(["-c", r#"input=$(cat); case "$input" in *shortcut=super-c*) printf 'floating\n';; *) exit 1;; esac"#])
@@ -562,10 +563,7 @@ mod tests {
             .get_args()
             .map(|arg| arg.to_str().unwrap())
             .collect();
-        assert!(
-            args.windows(2)
-                .any(|pair| pair == ["--position", "center"])
-        );
+        assert!(args.windows(2).any(|pair| pair == ["--position", "center"]));
         assert!(args.windows(2).any(|pair| pair == ["--monitor", "auto"]));
         assert!(!args.contains(&"--x-offset"));
         assert!(!args.contains(&"--y-offset"));

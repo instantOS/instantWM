@@ -84,6 +84,7 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY, XK_C => KeyAction::named(NamedAction::SetLayout(LayoutCommand::Grid))),
         key!(MODKEY, XK_F => KeyAction::named(NamedAction::LayoutFloat)),
         key!(MODKEY | SHIFT, XK_F => KeyAction::named(NamedAction::ToggleFakeFullscreen)),
+        key!(MODKEY | SHIFT, XK_I => KeyAction::named(NamedAction::WindowProperties)),
         key!(MODKEY, XK_W => KeyAction::named(NamedAction::ToggleTilingMaximized)),
         key!(MODKEY | CONTROL, XK_COMMA => KeyAction::named(NamedAction::CycleLayoutPrev)),
         key!(MODKEY | CONTROL, XK_PERIOD => KeyAction::named(NamedAction::CycleLayoutNext)),
@@ -358,6 +359,14 @@ mod tests {
         assert_eq!(
             default_named_action(MODKEY | SHIFT, XK_F),
             Some(NamedAction::ToggleFakeFullscreen)
+        );
+    }
+
+    #[test]
+    fn window_properties_has_a_default_binding() {
+        assert_eq!(
+            default_named_action(MODKEY | SHIFT, XK_I),
+            Some(NamedAction::WindowProperties)
         );
     }
 

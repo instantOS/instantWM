@@ -44,6 +44,7 @@ mod toggles;
 pub mod types;
 mod util;
 mod window_menu;
+mod window_properties;
 mod wm;
 
 // Compile-negative fixtures use the real private API, rather than doctests
