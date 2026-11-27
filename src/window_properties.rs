@@ -1,19 +1,24 @@
 //! Per-window properties chooser.
 //!
 //! The central [`crate::menu::MenuManager`] owns the presenter lifecycle. This
-//! module snapshots one managed client into headings and toggles, then applies
-//! a validated answer only while that window is still the selected one.
+//! module snapshots the actions for one managed client and validates the
+//! chosen action against its current state before applying it.
 use crate::actions::NamedAction;
 use crate::contexts::WmCtx;
-use crate::menu::{
-    ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuPosition, MenuSpec, shortcut_hint,
-};
-use crate::model::WmModel;
-use crate::types::{Client, ClientMode, ClientPlacement, Key, TagMask, WindowId};
+use crate::core_state::WmCore;
+use crate::menu::{ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuSpec, shortcut_hint};
+use crate::types::{Client, ClientMode, ClientPlacement, Key, Point, WindowId};
 
 pub(crate) struct WindowPropertiesState {
     win: WindowId,
+    origin: MenuOrigin,
     choices: Vec<PropertyChoice>,
+}
+
+#[derive(Clone, Copy)]
+enum MenuOrigin {
+    Keyboard,
+    Bar(Point),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,14 +95,22 @@ impl PropertyChoice {
         match self {
             Self::Lock(locked) => toggle_choice(
                 value,
-                format!("Locked: {}", yes_no(*locked)),
+                if *locked {
+                    "Unlock window (allow closing)"
+                } else {
+                    "Lock window (prevent closing)"
+                },
                 if *locked { "codlock" } else { "codunlock" },
                 *locked,
                 shortcut_hint(bindings, &NamedAction::ToggleLocked),
             ),
             Self::Sticky(sticky) => toggle_choice(
                 value,
-                format!("Sticky: {}", yes_no(*sticky)),
+                if *sticky {
+                    "Disable sticky (assigned tags only)"
+                } else {
+                    "Enable sticky (show on all tags)"
+                },
                 "codpin",
                 *sticky,
                 shortcut_hint(bindings, &NamedAction::ToggleSticky),
@@ -106,7 +119,11 @@ impl PropertyChoice {
                 let floating = mode.placement() == ClientPlacement::Floating;
                 toggle_choice(
                     value,
-                    format!("Placement: {}", if floating { "floating" } else { "tiled" }),
+                    if floating {
+                        "Tile window"
+                    } else {
+                        "Float window"
+                    },
                     "codwindow",
                     floating,
                     shortcut_hint(bindings, &NamedAction::ToggleFloating),
@@ -116,37 +133,26 @@ impl PropertyChoice {
                 let armed = matches!(state, FullscreenState::Armed | FullscreenState::Fake);
                 toggle_choice(
                     value,
-                    format!(
-                        "Fake fullscreen policy: {}",
-                        if armed { "armed" } else { "disarmed" }
-                    ),
+                    match state {
+                        FullscreenState::Windowed => "Enable fake fullscreen for this window",
+                        FullscreenState::Armed => "Disable fake fullscreen for this window",
+                        FullscreenState::Fake => "Switch to real fullscreen",
+                        FullscreenState::Real => "Switch to fake fullscreen",
+                    },
                     "mdfullscreen",
                     armed,
                     shortcut_hint(bindings, &NamedAction::ToggleFakeFullscreen),
                 )
             }
-            Self::ExitFullscreen(state) => MenuChoice::item(
+            Self::ExitFullscreen(_) => MenuChoice::item(value, "Exit fullscreen")
+                .icon("mdfullscreen")
+                .color(MenuColor::Blue),
+            Self::RestoreScratchpad { name, .. } => MenuChoice::item(
                 value,
-                format!(
-                    "Exit fullscreen: {}",
-                    if *state == FullscreenState::Fake {
-                        "fake"
-                    } else {
-                        "real"
-                    }
-                ),
-            )
-            .icon("mdfullscreen")
-            .color(MenuColor::Yellow),
-            Self::RestoreScratchpad { name, visible } => MenuChoice::item(
-                value,
-                format!(
-                    "Scratchpad: {name} ({}) — restore",
-                    if *visible { "visible" } else { "hidden" }
-                ),
+                format!("Restore scratchpad {name} as a normal window"),
             )
             .icon("codlayers")
-            .color(MenuColor::Green),
+            .color(MenuColor::Blue),
         }
     }
 
@@ -154,8 +160,10 @@ impl PropertyChoice {
         match self {
             Self::Lock(_) => crate::toggles::toggle_locked(ctx, win),
             Self::Sticky(_) => crate::toggles::toggle_sticky(ctx.core_mut(), win),
-            Self::Placement(_) => crate::floating::toggle_floating(ctx),
-            Self::FakePolicy(_) => crate::client::fullscreen::toggle_fake_fullscreen(ctx),
+            Self::Placement(_) => crate::floating::toggle_client_floating(ctx, win),
+            Self::FakePolicy(_) => {
+                crate::client::fullscreen::toggle_client_fake_fullscreen(ctx, win)
+            }
             Self::ExitFullscreen(_) => crate::client::set_fullscreen(ctx, win, false),
             Self::RestoreScratchpad { .. } => {
                 crate::floating::scratchpad_restore(ctx, None, Some(win))?;
@@ -165,43 +173,9 @@ impl PropertyChoice {
     }
 }
 
-fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
-}
-
-fn tags_label(tags: TagMask) -> String {
-    let tags: Vec<_> = tags
-        .without_scratchpad()
-        .iter()
-        .map(|tag| tag.to_string())
-        .collect();
-    if tags.is_empty() {
-        "-".to_string()
-    } else {
-        tags.join(",")
-    }
-}
-
-fn flags_label(client: &Client) -> Option<String> {
-    let flags = [
-        (client.is_fixed_size, "fixed size"),
-        (client.never_focus, "never focus"),
-        (client.keep_above, "always above"),
-        (client.is_borderless, "borderless"),
-        (client.is_modal, "modal"),
-        (client.transient_for.is_some(), "transient"),
-        (client.is_urgent, "urgent"),
-    ];
-    let flags: Vec<_> = flags
-        .into_iter()
-        .filter_map(|(set, label)| set.then_some(label))
-        .collect();
-    (!flags.is_empty()).then(|| flags.join(" · "))
-}
-
 fn toggle_choice(
     value: &str,
-    label: String,
+    label: &str,
     icon: &'static str,
     on: bool,
     shortcut: Option<String>,
@@ -211,103 +185,80 @@ fn toggle_choice(
         .color(if on {
             MenuColor::Green
         } else {
-            MenuColor::Fade
+            MenuColor::Blue
         })
         .shortcut(shortcut)
 }
 
 fn menu_spec(
-    model: &WmModel,
+    core: &WmCore,
     bindings: &[Key],
     win: WindowId,
-    preselect: Option<String>,
+    origin: MenuOrigin,
 ) -> Option<(MenuSpec, WindowPropertiesState)> {
-    let view = model.client_view(win)?;
+    let view = core.state.model.client_view(win)?;
     let client = view.client;
-    let scratchpad = client.is_scratchpad();
     let properties = PropertyChoice::for_client(client);
+    let title = if client.title.trim().is_empty() {
+        "Untitled window"
+    } else {
+        &client.title
+    };
     let mut choices = vec![
-        MenuChoice::heading(client.title.clone())
+        MenuChoice::heading(title)
             .icon("codwindowactive")
             .color(MenuColor::Blue),
-        MenuChoice::heading(format!(
-            "#{} · {} · tags {} · border {}px",
-            win,
-            view.monitor.name,
-            tags_label(client.tags),
-            client.border_width
-        ))
-        .color(MenuColor::Fade),
-        MenuChoice::heading("State").color(MenuColor::Blue),
     ];
-
     choices.extend(properties.iter().map(|property| property.row(bindings)));
 
-    choices.push(MenuChoice::heading("Info").color(MenuColor::Blue));
-    choices.push(MenuChoice::heading(if scratchpad {
-        "Tags: scratchpad role".to_string()
-    } else {
-        format!("Tags: {}", tags_label(client.tags))
-    }));
-    choices.push(MenuChoice::heading(format!(
-        "Border: {} px",
-        client.border_width
-    )));
-    if !scratchpad {
-        choices.push(MenuChoice::heading("Scratchpad: none"));
-    }
-    if let Some(flags) = flags_label(client) {
-        choices.push(MenuChoice::heading(format!("Client: {flags}")));
+    let mut options = MenuOptions {
+        placeholder: Some("Find a window action".into()),
+        width: Some("auto".into()),
+        line_height: Some("auto".into()),
+        lines: Some(choices.len() as u32),
+        ..Default::default()
+    };
+    if let MenuOrigin::Bar(press) = origin {
+        let monitor = view.monitor;
+        let local_x = core
+            .bar
+            .monitor_hit_cache(monitor.id())
+            .and_then(|hit| hit.title_ranges.iter().find(|range| range.win == win))
+            .map_or_else(|| press.x - monitor.work_rect().x, |range| range.start);
+        options.anchor_below_bar(monitor, local_x);
     }
 
-    let spec = MenuSpec {
-        options: MenuOptions {
-            prompt: Some("window".into()),
-            position: MenuPosition::Center,
-            width: Some("auto".into()),
-            line_height: Some("auto".into()),
-            lines: Some(choices.len() as u32),
-            preselect,
-            ..Default::default()
-        },
-        choices,
-    };
     Some((
-        spec,
+        MenuSpec { options, choices },
         WindowPropertiesState {
             win,
+            origin,
             choices: properties,
         },
     ))
 }
 
-fn open_target(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    preselect: Option<String>,
-) -> Result<(), String> {
-    let spec = {
-        let core = ctx.core();
-        menu_spec(
-            &core.state.model,
-            &core.state.config.bindings.keys,
-            win,
-            preselect,
-        )
-    };
-    let Some((spec, state)) = spec else {
+fn open_target(ctx: &mut WmCtx<'_>, win: WindowId, origin: MenuOrigin) -> Result<(), String> {
+    let core = ctx.core_mut();
+    let Some((spec, state)) = menu_spec(core, &core.state.config.bindings.keys, win, origin) else {
         return Ok(());
     };
-    ctx.core_mut()
-        .menus
-        .start(spec, ActiveMenu::WindowProperties(state))
+    core.menus.start(spec, ActiveMenu::WindowProperties(state))
+}
+
+pub(crate) fn open_from_title(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    press: Point,
+) -> Result<(), String> {
+    open_target(ctx, win, MenuOrigin::Bar(press))
 }
 
 pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let Some(win) = ctx.core().state.model.selected_win() else {
         return Ok(());
     };
-    open_target(ctx, win, None)
+    open_target(ctx, win, MenuOrigin::Keyboard)
 }
 
 pub(crate) fn apply(
@@ -315,12 +266,16 @@ pub(crate) fn apply(
     state: WindowPropertiesState,
     answer: &str,
 ) -> Result<(), String> {
-    let WindowPropertiesState { win, choices } = state;
+    let WindowPropertiesState {
+        win,
+        origin,
+        choices,
+    } = state;
     let Some(choice) = choices.iter().find(|choice| choice.value() == answer) else {
         return Ok(());
     };
     let model = &ctx.core().state.model;
-    if model.selected_win() != Some(win) {
+    if matches!(origin, MenuOrigin::Keyboard) && model.selected_win() != Some(win) {
         return Ok(());
     }
     let Some(client) = model.client(win) else {
@@ -328,11 +283,6 @@ pub(crate) fn apply(
     };
     if PropertyChoice::for_client(client).contains(choice) {
         choice.apply(ctx, win)?;
-    }
-    if ctx.core().state.model.selected_win() == Some(win)
-        && let Err(error) = open_target(ctx, win, Some(answer.to_string()))
-    {
-        log::warn!("window properties: {error}");
     }
     Ok(())
 }
@@ -343,7 +293,7 @@ mod tests {
     use crate::backend::BackendKind;
     use crate::config::keybindings::default_keybinds;
     use crate::test_support::{MonitorBuilder, TestWm, add_selected_client};
-    use crate::types::ClientMode;
+    use crate::types::{ClientMode, Rect, TagMask};
 
     fn fixture_with(mode: ClientMode, configure: impl FnOnce(&mut Client)) -> (TestWm, WindowId) {
         let mut wm = TestWm::new(crate::backend::WaylandBackendData::default());
@@ -351,6 +301,7 @@ mod tests {
         let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .named("TEST-1")
+                .monitor_rect(Rect::new(0, 0, 1200, 800))
                 .tag_count(3)
                 .selected_tags(TagMask::single(1).unwrap())
                 .build(),
@@ -407,7 +358,7 @@ mod tests {
 
     fn menu_input(wm: &TestWm, win: WindowId) -> String {
         let bindings = default_keybinds(BackendKind::Wayland);
-        menu_spec(&wm.core.state.model, &bindings, win, None)
+        menu_spec(&wm.core, &bindings, win, MenuOrigin::Keyboard)
             .expect("fixture window is managed")
             .0
             .input()
@@ -427,16 +378,9 @@ mod tests {
     }
 
     #[test]
-    fn presenter_is_centered_auto_sized_and_preselects_a_choice() {
+    fn keyboard_menu_centers_and_sizes_to_the_actions() {
         let (wm, win) = fixture(ClientMode::tiled());
-        let bindings = default_keybinds(BackendKind::Wayland);
-        let (spec, _) = menu_spec(
-            &wm.core.state.model,
-            &bindings,
-            win,
-            Some("sticky".to_string()),
-        )
-        .unwrap();
+        let (spec, _) = menu_spec(&wm.core, &[], win, MenuOrigin::Keyboard).unwrap();
         let rows = spec.choices.len().to_string();
         let command = spec.command();
         let args: Vec<_> = command
@@ -444,158 +388,171 @@ mod tests {
             .map(|arg| arg.to_str().unwrap())
             .collect();
         for pair in [
-            ["--prompt", "window"],
+            ["--placeholder", "Find a window action"],
             ["--position", "center"],
             ["--width", "auto"],
             ["--line-height", "auto"],
             ["--lines", rows.as_str()],
-            ["--preselect", "sticky"],
         ] {
             assert!(args.windows(2).any(|args| args == pair), "missing {pair:?}");
         }
     }
 
     #[test]
-    fn ordinary_window_rows_name_the_state_and_offer_every_toggle() {
-        let (wm, win) = fixture(ClientMode::tiled());
-        let input = menu_input(&wm, win);
-
-        assert!(input.contains("{heading blue icon=codwindowactive} Editor"));
-        assert!(input.contains("{heading fade} #7 · TEST-1 · tags 1 · border 2px"));
-        assert!(input.contains("{heading blue} State"));
-        assert_eq!(
-            row(&input, "lock").unwrap(),
-            "{fade icon=codunlock value=lock} Locked: no"
+    fn title_menu_uses_the_clicked_cells_output_and_left_edge() {
+        let (mut wm, win) = fixture(ClientMode::tiled());
+        let id = wm.core.state.model.selected_monitor_id();
+        let monitor = wm.core.state.model.monitor_mut(id).unwrap();
+        monitor.num = 1;
+        monitor.monitor_rect = Rect::new(-1920, -200, 1920, 1080);
+        monitor.available_rect = Rect::new(-1900, -190, 1900, 1070);
+        monitor.bar_height = 36;
+        wm.core.bar.replace_hit_cache(
+            id,
+            crate::bar::MonitorHitCache {
+                title_ranges: vec![crate::bar::TitleHitRange {
+                    win,
+                    start: 300,
+                    end: 600,
+                }],
+                ..Default::default()
+            },
         );
-        assert_eq!(
-            row(&input, "sticky").unwrap(),
-            "{fade icon=codpin value=sticky shortcut=super-ctrl-s} Sticky: no"
-        );
-        assert_eq!(
-            row(&input, "floating").unwrap(),
-            "{fade icon=codwindow value=floating shortcut=super-shift-space} Placement: tiled"
-        );
-        assert_eq!(
-            row(&input, "fake-policy").unwrap(),
-            "{fade icon=mdfullscreen value=fake-policy shortcut=super-shift-f} Fake fullscreen policy: disarmed"
-        );
-        assert!(row(&input, "fullscreen-exit").is_none());
-        assert!(input.contains("{heading blue} Info"));
-        assert!(input.contains("{heading} Tags: 1"));
-        assert!(input.contains("{heading} Border: 2 px"));
-        assert!(input.contains("{heading} Scratchpad: none"));
+        let (spec, _) =
+            menu_spec(&wm.core, &[], win, MenuOrigin::Bar(Point::new(-1550, -180))).unwrap();
+        assert_eq!(spec.options.position, crate::menu::MenuPosition::TopLeft);
+        assert_eq!(spec.options.monitor.as_deref(), Some("1"));
+        assert_eq!(spec.options.x_offset, Some(320));
+        assert_eq!(spec.options.y_offset, Some(46));
     }
 
     #[test]
-    fn locked_sticky_and_armed_rows_are_green() {
-        let (wm, win) = fixture_with(ClientMode::tiled().as_fake_armed(), |client| {
+    fn ordinary_menu_shows_a_title_and_four_actions_with_shortcuts() {
+        let (wm, win) = fixture(ClientMode::tiled());
+        let input = menu_input(&wm, win);
+        assert_eq!(input.lines().count(), 5);
+        assert_eq!(
+            input.lines().next(),
+            Some("{heading blue icon=codwindowactive} Editor")
+        );
+        for (value, expected) in [
+            (
+                "lock",
+                "{blue icon=codunlock value=lock} Lock window (prevent closing)",
+            ),
+            (
+                "sticky",
+                "{blue icon=codpin value=sticky shortcut=super-ctrl-s} Enable sticky (show on all tags)",
+            ),
+            (
+                "floating",
+                "{blue icon=codwindow value=floating shortcut=super-shift-space} Float window",
+            ),
+            (
+                "fake-policy",
+                "{blue icon=mdfullscreen value=fake-policy shortcut=super-shift-f} Enable fake fullscreen for this window",
+            ),
+        ] {
+            assert_eq!(row(&input, value), Some(expected));
+        }
+    }
+
+    #[test]
+    fn enabled_properties_describe_the_reverse_action() {
+        let (wm, win) = fixture_with(ClientMode::floating().as_fake_armed(), |client| {
             client.is_locked = true;
             client.is_sticky = true;
         });
         let input = menu_input(&wm, win);
-
-        assert_eq!(
-            row(&input, "lock").unwrap(),
-            "{green icon=codlock value=lock} Locked: yes"
-        );
-        assert_eq!(
-            row(&input, "sticky").unwrap(),
-            "{green icon=codpin value=sticky shortcut=super-ctrl-s} Sticky: yes"
-        );
-        assert_eq!(
-            row(&input, "fake-policy").unwrap(),
-            "{green icon=mdfullscreen value=fake-policy shortcut=super-shift-f} Fake fullscreen policy: armed"
-        );
+        for (value, label) in [
+            ("lock", "Unlock window (allow closing)"),
+            ("sticky", "Disable sticky (assigned tags only)"),
+            ("floating", "Tile window"),
+            ("fake-policy", "Disable fake fullscreen for this window"),
+        ] {
+            let line = row(&input, value).unwrap();
+            assert!(line.starts_with("{green"));
+            assert!(line.ends_with(label));
+        }
     }
 
     #[test]
-    fn active_fake_fullscreen_counts_as_armed_and_keeps_placement() {
-        let (wm, win) = fixture(ClientMode::tiled().as_fake_fullscreen());
-        let input = menu_input(&wm, win);
-
-        let policy = row(&input, "fake-policy").unwrap();
-        assert!(policy.starts_with("{green"));
-        assert!(policy.ends_with("Fake fullscreen policy: armed"));
-        assert!(row(&input, "floating").is_some());
-        assert_eq!(
-            row(&input, "fullscreen-exit").unwrap(),
-            "{yellow icon=mdfullscreen value=fullscreen-exit} Exit fullscreen: fake"
-        );
-    }
-
-    #[test]
-    fn true_fullscreen_reports_real_and_hides_the_placement_toggle() {
-        let (wm, win) = fixture(ClientMode::tiled().as_fullscreen());
-        let input = menu_input(&wm, win);
-
-        assert_eq!(
-            row(&input, "fullscreen-exit").unwrap(),
-            "{yellow icon=mdfullscreen value=fullscreen-exit} Exit fullscreen: real"
-        );
-        assert!(row(&input, "floating").is_none());
+    fn fullscreen_menu_offers_switching_modes_or_exiting() {
+        for (mode, label, has_placement) in [
+            (
+                ClientMode::tiled().as_fake_fullscreen(),
+                "Switch to real fullscreen",
+                true,
+            ),
+            (
+                ClientMode::tiled().as_fullscreen(),
+                "Switch to fake fullscreen",
+                false,
+            ),
+        ] {
+            let (wm, win) = fixture(mode);
+            let input = menu_input(&wm, win);
+            assert!(row(&input, "fake-policy").unwrap().ends_with(label));
+            assert!(
+                row(&input, "fullscreen-exit")
+                    .unwrap()
+                    .ends_with("Exit fullscreen")
+            );
+            assert_eq!(row(&input, "floating").is_some(), has_placement);
+        }
     }
 
     #[test]
     fn scratchpad_rows_offer_restore_without_ordinary_toggles() {
-        let (wm, win) = scratchpad_fixture(false);
-        let input = menu_input(&wm, win);
-
-        assert_eq!(
-            row(&input, "scratchpad-restore").unwrap(),
-            "{green icon=codlayers value=scratchpad-restore} Scratchpad: notes (hidden) — restore"
-        );
-        assert!(row(&input, "lock").is_some());
-        assert!(row(&input, "sticky").is_none());
-        assert!(row(&input, "floating").is_none());
-        assert!(row(&input, "fake-policy").is_none());
-        assert!(input.contains("{heading} Tags: scratchpad role"));
-        assert!(!input.contains("Scratchpad: none"));
-    }
-
-    #[test]
-    fn visible_scratchpads_report_their_visibility() {
-        let (wm, win) = scratchpad_fixture(true);
-        let input = menu_input(&wm, win);
-
-        assert!(
-            row(&input, "scratchpad-restore")
-                .unwrap()
-                .ends_with("Scratchpad: notes (visible) — restore")
-        );
-    }
-
-    #[test]
-    fn info_headings_carry_no_value_and_are_not_selectable() {
-        let (wm, win) = fixture_with(ClientMode::tiled(), |client| {
-            client.is_fixed_size = true;
-            client.never_focus = false;
-            client.keep_above = true;
-            client.is_borderless = false;
-            client.is_modal = false;
-            client.is_urgent = true;
-        });
-        let input = menu_input(&wm, win);
-
-        for line in input.lines().filter(|line| line.starts_with("{heading")) {
-            assert!(!line.contains("value="), "{line}");
-        }
-        for label in [
-            "Tags: 1",
-            "Border: 2 px",
-            "Scratchpad: none",
-            "Client: fixed size · always above · urgent",
-        ] {
-            let line = input
-                .lines()
-                .find(|line| line.ends_with(label))
-                .unwrap_or_else(|| panic!("missing {label}"));
-            assert!(line.starts_with("{heading}"), "{line}");
-            assert!(!line.contains("value="), "{line}");
+        for visible in [false, true] {
+            let (wm, win) = scratchpad_fixture(visible);
+            let input = menu_input(&wm, win);
+            assert!(
+                row(&input, "scratchpad-restore")
+                    .unwrap()
+                    .ends_with("Restore scratchpad notes as a normal window")
+            );
+            assert!(row(&input, "lock").is_some());
+            assert!(row(&input, "sticky").is_none());
+            assert!(row(&input, "floating").is_none());
+            assert!(row(&input, "fake-policy").is_none());
         }
     }
 
     fn snapshot(wm: &TestWm, win: WindowId) -> WindowPropertiesState {
-        menu_spec(&wm.core.state.model, &[], win, None).unwrap().1
+        menu_spec(&wm.core, &[], win, MenuOrigin::Keyboard)
+            .unwrap()
+            .1
+    }
+
+    #[test]
+    fn title_menu_actions_target_the_clicked_window_even_when_it_is_unfocused() {
+        let (mut wm, win) = fixture(ClientMode::tiled());
+        let monitor_id = wm.core.state.model.selected_monitor_id();
+        let other = WindowId(8);
+        add_selected_client(
+            &mut wm.core.state.model,
+            monitor_id,
+            Client {
+                win: other,
+                tags: TagMask::single(1).unwrap(),
+                ..Client::default()
+            },
+        );
+        for answer in ["fake-policy", "floating", "sticky"] {
+            let (_, state) =
+                menu_spec(&wm.core, &[], win, MenuOrigin::Bar(Point::new(0, 0))).unwrap();
+            wm.with_ctx(|ctx| apply(ctx, state, answer)).unwrap();
+        }
+        let model = &wm.core.state.model;
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_fake_armed());
+        assert!(client.mode().is_normal_floating());
+        assert!(client.is_sticky);
+        let client = model.client(other).unwrap();
+        assert_eq!(client.mode(), ClientMode::tiled());
+        assert!(!client.is_sticky);
+        assert_eq!(model.selected_win(), Some(other));
     }
 
     #[test]

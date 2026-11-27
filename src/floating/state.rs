@@ -139,11 +139,16 @@ pub(crate) fn set_window_placement_from_policy(
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let mon = ctx.core().state.model.expect_selected_monitor();
-    let Some(win) = mon.selected else { return };
-    let client = mon
-        .client(win)
-        .expect("selected window is owned by its monitor");
+    if let Some(win) = ctx.core().state.model.selected_win() {
+        toggle_client_floating(ctx, win);
+    }
+}
+
+pub(crate) fn toggle_client_floating(ctx: &mut WmCtx, win: WindowId) {
+    let Some(view) = ctx.core().state.model.client_view(win) else {
+        return;
+    };
+    let client = view.client;
     if client.is_edge_scratchpad() || client.mode().is_true_fullscreen() {
         return;
     }
@@ -152,10 +157,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     } else {
         WindowModeRequest::Tiling
     };
+    let monitor_id = view.monitor.id();
     let _ = set_window_mode(ctx, win, request);
-
-    let selmon_id = ctx.core().state.model.selected_monitor_id();
-    arrange(ctx, Some(selmon_id), ArrangeAnimation::Configured);
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
 }
 
 #[cfg(test)]

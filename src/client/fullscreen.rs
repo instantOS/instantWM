@@ -242,9 +242,12 @@ fn apply_maximized_change(
 /// While the policy is armed, the next application fullscreen request is
 /// granted as fake fullscreen instead of real fullscreen.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
-    let Some(win) = ctx.core().state.model.selected_win() else {
-        return;
-    };
+    if let Some(win) = ctx.core().state.model.selected_win() {
+        toggle_client_fake_fullscreen(ctx, win);
+    }
+}
+
+pub(crate) fn toggle_client_fake_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId) {
     let Some(transition) = ctx.core_mut().state.model.toggle_fake_fullscreen(win) else {
         return;
     };

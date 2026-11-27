@@ -1,7 +1,7 @@
 //! Window title bar drag operations.
 //!
 //! This module handles click and drag interactions on window title bars,
-//! supporting both left-click (move) and right-click (resize/zoom) actions.
+//! supporting left-click focus/move and right-click menu/resize actions.
 use crate::backend::PointerOps;
 
 use crate::client::geometry::FloatingGeometryIntent;
@@ -46,14 +46,13 @@ pub fn title_drag_begin(
     click_root: Point,
     suppress_click_action: bool,
 ) -> bool {
-    // One resolution for every arming fact. The right-button gate runs before
-    // the optional focus below, which changes selection but never a client's
-    // geometry or hidden state.
+    let is_client_resize =
+        btn == MouseButton::Right && origin != crate::core_state::ArmedDragOrigin::BarTitle;
     let (drop_restore_geo, was_hidden) = {
         let Some(client) = ctx.core().state.model.client(win) else {
             return false;
         };
-        if btn == MouseButton::Right && client.mode().is_true_fullscreen() {
+        if is_client_resize && client.mode().is_true_fullscreen() {
             return false;
         }
         (
@@ -61,7 +60,7 @@ pub fn title_drag_begin(
             client.is_hidden,
         )
     };
-    if btn == MouseButton::Right {
+    if is_client_resize {
         crate::focus::focus(ctx, Some(win));
     }
 
@@ -257,6 +256,17 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let win = drag.win();
     let was_hidden = drag.was_hidden();
 
+    if drag.button() == MouseButton::Right
+        && ctx
+            .core()
+            .state
+            .model
+            .client(win)
+            .is_none_or(|client| client.mode().is_true_fullscreen())
+    {
+        return false;
+    }
+
     if was_hidden {
         crate::client::show_window(ctx, win);
     }
@@ -418,11 +428,11 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
 }
 
 /// Finish a title drag interaction (button release without exceeding the
-/// drag threshold).  Performs the click action (focus / hide / zoom).
+/// drag threshold). Performs the click action (focus, hide, or open the menu).
 ///
 /// Once the drag threshold promotes the interaction to `Active`, the unified
-/// the shared interaction transport handles the drop instead.
-pub fn title_drag_finish(ctx: &mut WmCtx) {
+/// shared interaction transport handles the drop instead.
+pub fn title_drag_finish(ctx: &mut WmCtx, root: Point) {
     let Some(drag) = ctx.transition_pointer_interaction(|state| state.finish_armed()) else {
         return;
     };
@@ -436,6 +446,15 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     }
 
     if is_right_click {
+        if drag.origin() == crate::core_state::ArmedDragOrigin::BarTitle {
+            let press = drag.start_point();
+            if root.manhattan_distance(&press) <= DRAG_THRESHOLD
+                && let Err(error) = crate::window_properties::open_from_title(ctx, win, press)
+            {
+                log::warn!("window properties: {error}");
+            }
+            return;
+        }
         if was_hidden {
             crate::client::show_window(ctx, win);
             crate::focus::focus(ctx, Some(win));
@@ -460,7 +479,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Drag > [`DRAG_THRESHOLD`]: show, focus, and either reorder the title strip
 /// while the pointer stays on it (left button) or promote to the shared move
 /// state.
-/// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
+/// Right click opens the properties menu. Right drag resizes from the bottom-right.
 ///
 /// Input adapters own capture; this function only arms shared interaction state.
 pub fn handle_window_title_mouse(

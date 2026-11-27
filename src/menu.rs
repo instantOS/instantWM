@@ -14,7 +14,7 @@ use std::process::{Command, Stdio};
 use crate::actions::{KeyAction, NamedAction};
 use crate::contexts::WmCtx;
 use crate::menu_presenter::{self, MenuHost};
-use crate::types::{Key, Modifier, WindowId};
+use crate::types::{Key, Modifier, Monitor, WindowId};
 
 pub(crate) const INSTANTMENU_BIN: &str = "instantmenu";
 pub(crate) const MAX_MENU_LABEL_CHARS: usize = 200;
@@ -263,6 +263,13 @@ impl Default for MenuOptions {
 }
 
 impl MenuOptions {
+    pub(crate) fn anchor_below_bar(&mut self, monitor: &Monitor, local_x: i32) {
+        self.position = MenuPosition::TopLeft;
+        self.monitor = Some(monitor.num.max(0).to_string());
+        self.x_offset = Some(monitor.work_rect().x - monitor.monitor_rect.x + local_x);
+        self.y_offset = Some(monitor.bar_y() + monitor.bar_height - monitor.monitor_rect.y);
+    }
+
     pub(crate) fn command(&self, presenter: impl AsRef<OsStr>) -> Command {
         let mut command = Command::new(presenter);
         command.args([

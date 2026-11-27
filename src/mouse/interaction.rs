@@ -210,7 +210,7 @@ fn finish(
             let _ = crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers);
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
-            crate::mouse::drag::title_drag_finish(ctx);
+            crate::mouse::drag::title_drag_finish(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Reordering(..))) => {
             crate::mouse::drag::title_reorder_finish(ctx);

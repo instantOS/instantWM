@@ -4,9 +4,7 @@
 use crate::actions::NamedAction;
 use crate::contexts::WmCtx;
 use crate::layouts::LayoutCommand;
-use crate::menu::{
-    ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuPosition, MenuSpec, shortcut_hint_where,
-};
+use crate::menu::{ActiveMenu, MenuChoice, MenuColor, MenuOptions, MenuSpec, shortcut_hint_where};
 use crate::types::{Key, Monitor, MonitorId, TagMask};
 
 pub(crate) struct Choice {
@@ -113,38 +111,6 @@ fn apply_shortcuts(entries: &mut [Choice], bindings: &[Key]) {
     }
 }
 
-#[derive(Default)]
-struct MenuAnchor {
-    monitor: Option<u32>,
-    x_offset: i32,
-    y_offset: i32,
-}
-
-impl MenuAnchor {
-    fn menu_options(&self, active: LayoutCommand) -> MenuOptions {
-        MenuOptions {
-            placeholder: Some("Choose window layout".into()),
-            position: if self.monitor.is_some() {
-                MenuPosition::TopLeft
-            } else {
-                MenuPosition::Center
-            },
-            monitor: Some(
-                self.monitor
-                    .map_or_else(|| "auto".into(), |index| index.to_string()),
-            ),
-            x_offset: Some(self.x_offset),
-            y_offset: Some(self.y_offset),
-            width: Some("auto".into()),
-            line_height: Some("auto".into()),
-            columns: Some(2),
-            lines: Some(4),
-            preselect: Some(active.name().into()),
-            ..Default::default()
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MenuContext {
     monitor: MonitorId,
@@ -167,43 +133,44 @@ pub(crate) struct LayoutMenuState {
     entries: Vec<Choice>,
 }
 
-fn anchor(monitor: &Monitor, layout_start: i32) -> (i32, i32) {
-    (
-        monitor.work_rect().x - monitor.monitor_rect.x + layout_start,
-        monitor.bar_y() + monitor.bar_height - monitor.monitor_rect.y,
-    )
-}
-
-fn menu_spec(active: LayoutCommand, anchor: &MenuAnchor, entries: &[Choice]) -> MenuSpec {
+fn menu_spec(
+    active: LayoutCommand,
+    anchor: Option<(&Monitor, i32)>,
+    entries: &[Choice],
+) -> MenuSpec {
+    let mut options = MenuOptions {
+        placeholder: Some("Choose window layout".into()),
+        monitor: Some("auto".into()),
+        x_offset: Some(0),
+        y_offset: Some(0),
+        width: Some("auto".into()),
+        line_height: Some("auto".into()),
+        columns: Some(2),
+        lines: Some(4),
+        preselect: Some(active.name().into()),
+        ..Default::default()
+    };
+    if let Some((monitor, local_x)) = anchor {
+        options.anchor_below_bar(monitor, local_x);
+    }
     MenuSpec {
-        options: anchor.menu_options(active),
+        options,
         choices: entries.iter().map(Choice::menu_choice).collect(),
     }
 }
 
 pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let core = ctx.core_mut();
-    let (context, active, anchor) = {
-        let monitor = core.state.model.expect_selected_monitor();
-        let context = MenuContext::from_monitor(monitor);
-        let active = monitor.current_layout_command();
-        let anchor = core
-            .bar
-            .monitor_hit_cache(monitor.id())
-            .map(|hit| {
-                let (x_offset, y_offset) = anchor(monitor, hit.layout_start);
-                MenuAnchor {
-                    monitor: Some(monitor.num.max(0) as u32),
-                    x_offset,
-                    y_offset,
-                }
-            })
-            .unwrap_or_default();
-        (context, active, anchor)
-    };
+    let monitor = core.state.model.expect_selected_monitor();
+    let context = MenuContext::from_monitor(monitor);
+    let active = monitor.current_layout_command();
+    let anchor = core
+        .bar
+        .monitor_hit_cache(monitor.id())
+        .map(|hit| (monitor, hit.layout_start));
     let mut entries = choices(active);
     apply_shortcuts(&mut entries, &core.state.config.bindings.keys);
-    let spec = menu_spec(active, &anchor, &entries);
+    let spec = menu_spec(active, anchor, &entries);
     core.menus.start(
         spec,
         ActiveMenu::Layout(LayoutMenuState { context, entries }),
@@ -270,7 +237,7 @@ mod tests {
             &mut entries,
             &crate::config::keybindings::default_keybinds(crate::backend::BackendKind::Wayland),
         );
-        let spec = menu_spec(active, &MenuAnchor::default(), &entries);
+        let spec = menu_spec(active, None, &entries);
         (spec, LayoutMenuState { context, entries })
     }
 
@@ -381,7 +348,9 @@ mod tests {
                 monitor.bar_height = 36;
             })
             .build();
-        assert_eq!(anchor(&monitor, 140), (160, 36));
+        let mut options = MenuOptions::default();
+        options.anchor_below_bar(&monitor, 140);
+        assert_eq!((options.x_offset, options.y_offset), (Some(160), Some(36)));
     }
 
     fn binding(modifiers: &str, key: &str, action: &str) -> Key {
@@ -519,13 +488,12 @@ mod tests {
 
     #[test]
     fn chooser_uses_explicit_anchor_without_probing_the_cursor() {
+        let mut monitor = Monitor::default();
+        monitor.num = 1;
+        monitor.bar_height = 30;
         let spec = menu_spec(
             LayoutCommand::Grid,
-            &MenuAnchor {
-                monitor: Some(1),
-                x_offset: 135,
-                y_offset: 30,
-            },
+            Some((&monitor, 135)),
             &choices(LayoutCommand::Grid),
         );
         let command = spec.command();
@@ -553,11 +521,7 @@ mod tests {
 
     #[test]
     fn chooser_centers_when_the_bar_has_no_hit_geometry() {
-        let spec = menu_spec(
-            LayoutCommand::Grid,
-            &MenuAnchor::default(),
-            &choices(LayoutCommand::Grid),
-        );
+        let spec = menu_spec(LayoutCommand::Grid, None, &choices(LayoutCommand::Grid));
         let command = spec.command();
         let args: Vec<_> = command
             .get_args()

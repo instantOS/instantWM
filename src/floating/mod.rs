@@ -27,6 +27,7 @@ pub use movement::{center_window, key_move, key_resize};
 // ── state ────────────────────────────────────────────────────────────────────
 
 pub(crate) use state::set_window_placement_from_policy;
+pub(crate) use state::toggle_client_floating;
 pub use state::{WindowModeChange, WindowModeRequest, set_window_mode, toggle_floating};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────

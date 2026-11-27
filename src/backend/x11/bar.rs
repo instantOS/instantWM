@@ -231,7 +231,10 @@ fn create_missing_bar_windows(
                 x11,
                 root,
                 background,
-                EventMask::BUTTON_PRESS | EventMask::EXPOSURE | EventMask::LEAVE_WINDOW,
+                EventMask::BUTTON_PRESS
+                    | EventMask::BUTTON_RELEASE
+                    | EventMask::EXPOSURE
+                    | EventMask::LEAVE_WINDOW,
             );
             created_top_bars = true;
         }
