@@ -1,8 +1,8 @@
 //! instantMENU is also the WM's layout/menu presenter. All subprocess and disk
 //! operations run off the compositor thread. Cancellation kills the live menu.
 use super::{Shared, Shortcut, Trigger};
+use crate::menu::{MAX_MENU_LABEL_CHARS, MenuChoice, MenuColor, MenuOptions, menu_input};
 use std::io::{Read, Write};
-use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::{
     Mutex,
@@ -22,6 +22,7 @@ pub(super) struct Dialog {
 /// shortcut list leaves the menu on screen.
 const ROOMY_LINE_LIMIT: usize = 10;
 const MAX_VISIBLE_LINES: usize = 14;
+const MAX_DIALOG_TEXT_CHARS: usize = 180;
 
 fn menu_command(
     presenter: &std::path::Path,
@@ -30,32 +31,18 @@ fn menu_command(
     input: Option<&str>,
 ) -> Command {
     let lines = entries.lines().count().clamp(1, MAX_VISIBLE_LINES);
-    let mut command = Command::new(presenter);
-    command
-        .args([
-            "--position",
-            "center",
-            "--border-width",
-            "4",
-            "--width",
-            "auto",
-            "--lines",
-            &lines.to_string(),
-            "--placeholder",
-            &clean(prompt),
-            "--insensitive",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .process_group(0);
-    if lines <= ROOMY_LINE_LIMIT {
-        command.args(["--line-height", "auto"]);
+    let mut command = MenuOptions {
+        width: Some("auto".into()),
+        lines: Some(lines as u32),
+        placeholder: Some(clean(prompt, MAX_DIALOG_TEXT_CHARS)),
+        line_height: (lines <= ROOMY_LINE_LIMIT).then(|| "auto".into()),
+        reject_no_match: input.is_none(),
+        ..Default::default()
     }
+    .command(presenter);
+    command.stderr(Stdio::null());
     if let Some(input) = input {
         command.args(["--input-only", "--initial-text", input]);
-    } else {
-        command.arg("--reject-no-match");
     }
     command
 }
@@ -165,39 +152,51 @@ impl Drop for Dialog {
     }
 }
 
-fn clean(text: &str) -> String {
+fn clean(text: &str, limit: usize) -> String {
     text.chars()
         .filter(|ch| !ch.is_control() && *ch != '{' && *ch != '}')
-        .take(180)
+        .take(limit)
         .collect()
 }
 
 /// Context rows use `heading`, which instantMENU skips during selection.
 /// Keep chords in labels: `shortcut=` would register menu accelerators.
 fn approval_entries(app: &str, shortcuts: &[Shortcut]) -> String {
-    let mut entries = format!(
-        "{{heading blue icon=mdkeyboard}} {}\n\
-         {{heading fade}} These shortcuts work while other applications are focused\n\
-         {{heading}} Permission\n\
-         {{green icon=mdcheck value=allow}} Allow these global shortcuts\n\
-         {{icon=mdclose value=cancel}} Cancel\n\
-         {{heading blue}} Bindings: select to edit\n",
-        clean(app),
-    );
+    let mut choices = vec![
+        MenuChoice::heading(clean(app, MAX_DIALOG_TEXT_CHARS))
+            .color(MenuColor::Blue)
+            .icon("mdkeyboard"),
+        MenuChoice::heading("These shortcuts work while other applications are focused")
+            .color(MenuColor::Fade),
+        MenuChoice::heading("Permission"),
+        MenuChoice::item("allow", "Allow these global shortcuts")
+            .color(MenuColor::Green)
+            .icon("mdcheck"),
+        MenuChoice::item("cancel", "Cancel").icon("mdclose"),
+        MenuChoice::heading("Bindings: select to edit").color(MenuColor::Blue),
+    ];
     if shortcuts.is_empty() {
-        entries.push_str("{heading fade} No shortcuts requested\n");
+        choices.push(MenuChoice::heading("No shortcuts requested").color(MenuColor::Fade));
     }
     for (index, shortcut) in shortcuts.iter().enumerate() {
-        let (style, trigger) = shortcut.trigger.map_or_else(
-            || ("fade icon=mdkeyboardoff", "Disabled".into()),
-            |trigger| ("icon=mdkeyboard", trigger.text()),
+        let trigger = shortcut
+            .trigger
+            .map_or_else(|| "Disabled".into(), |trigger| trigger.text());
+        let description_limit = MAX_MENU_LABEL_CHARS.saturating_sub(trigger.chars().count() + 2);
+        let description = clean(
+            &shortcut.description,
+            description_limit.min(MAX_DIALOG_TEXT_CHARS),
         );
-        entries.push_str(&format!(
-            "{{{style} value=edit{index}}} {}: {trigger}\n",
-            clean(&shortcut.description),
-        ));
+        let mut choice =
+            MenuChoice::item(format!("edit{index}"), format!("{description}: {trigger}"));
+        if shortcut.trigger.is_some() {
+            choice = choice.icon("mdkeyboard");
+        } else {
+            choice = choice.color(MenuColor::Fade).icon("mdkeyboardoff");
+        }
+        choices.push(choice);
     }
-    entries
+    menu_input(&choices)
 }
 
 /// Return a complete user-approved set. Nothing becomes active until the final
@@ -268,7 +267,7 @@ pub(super) fn configure(
             let text = dialog.menu(
                 &format!(
                     "{}: type e.g. CTRL+ALT+space; empty disables",
-                    clean(&shortcut.description)
+                    clean(&shortcut.description, MAX_DIALOG_TEXT_CHARS)
                 ),
                 "",
                 Some(&input),
@@ -419,6 +418,26 @@ mod tests {
         assert!(args.contains(&"--insensitive"));
         assert!(args.contains(&"--reject-no-match"));
         assert!(!args.iter().any(|argument| argument.contains('—')));
+    }
+
+    #[test]
+    fn shortcut_editor_accepts_input_without_a_matching_row() {
+        let command = menu_command(
+            std::path::Path::new("instantmenu"),
+            "Edit binding",
+            "",
+            Some("CTRL+space"),
+        );
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect();
+        assert!(args.contains(&"--input-only"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--initial-text", "CTRL+space"])
+        );
+        assert!(!args.contains(&"--reject-no-match"));
     }
 
     #[test]

@@ -22,6 +22,23 @@ impl<C> MenuHost<C> {
         self.watch.is_some()
     }
 
+    pub(crate) fn is_open(&self) -> bool {
+        self.child.is_some() || self.source.is_some()
+    }
+
+    /// Accept only output from the current presenter. Its callback removes
+    /// the source after dispatch, so clear our token before applying the answer.
+    pub(crate) fn complete(&mut self, generation: u64, finish: impl FnOnce(Child)) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.source = None;
+        if let Some(child) = self.child.take() {
+            finish(child);
+        }
+        true
+    }
+
     pub(crate) fn cancel(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         if let Some(token) = self.source.take()

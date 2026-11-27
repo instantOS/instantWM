@@ -2,15 +2,17 @@
 //! D-Bus sessions and submenu navigation stay in the tray worker. Each process
 //! receives an immutable presentation snapshot; replacements invalidate its
 //! generation so late output cannot select from, or dismiss, a newer menu.
-use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::contexts::WmCtx;
 use crate::core_state::{TrayMenuBackend, WmCore};
+use crate::menu::{
+    INSTANTMENU_BIN, MAX_MENU_LABEL_CHARS, MenuChoice, MenuColor, MenuOptions, MenuPosition,
+    menu_input, sanitize_label,
+};
 use crate::menu_presenter::{self, MenuHost};
 use crate::systray::{MenuAction, MenuEntry, MenuView, TrayMenuPresentation};
 
-const INSTANTMENU_BIN: &str = "instantmenu";
 const MENU_WIDTH: i32 = 340;
 
 fn instantmenu_on_path() -> bool {
@@ -83,15 +85,15 @@ pub(crate) fn reconcile(wm: &mut WmCore) -> bool {
         .menu
         .presentation()
         .expect("open tray view");
-    let lines = build_lines(&presentation.view);
-    if lines.is_empty() {
+    let choices = choices(&presentation.view);
+    if choices.is_empty() {
         host.presenter.cancel();
         host.presented = None;
         crate::systray::close_menu(wm);
         return true;
     }
-    let command = instantmenu_command(lines.len().try_into().unwrap_or(i32::MAX), height);
-    start_menu(host, command, presentation, lines, height);
+    let command = instantmenu_command(choices.len().try_into().unwrap_or(u32::MAX), height);
+    start_menu(host, command, presentation, menu_input(&choices), height);
 
     true
 }
@@ -100,12 +102,11 @@ fn start_menu(
     host: &mut InstantMenuHost,
     command: Command,
     presentation: TrayMenuPresentation,
-    lines: Vec<String>,
+    input: String,
     bar_height: i32,
 ) {
     host.presented = None;
     let revision = presentation.revision;
-    let input = lines.join("\n") + "\n";
     match menu_presenter::start(&mut host.presenter, command, presentation, input) {
         Ok(()) => host.presented = Some((revision, bar_height)),
         Err(error) => {
@@ -123,19 +124,18 @@ fn selected_entry<'a>(view: &'a MenuView, answer: &str) -> Option<&'a MenuEntry>
     } else {
         view.entries
             .iter()
-            .find(|entry| entry.display_label() == answer)
+            .find(|entry| sanitize_label(&entry.display_label(), MAX_MENU_LABEL_CHARS) == answer)
     }
 }
 
 fn finish(ctx: &mut WmCtx<'_>, generation: u64, presentation: TrayMenuPresentation, answer: &str) {
     let wm = ctx.core_mut();
     let host = &mut wm.bar.systray_host.instantmenu;
-    if generation != host.presenter.generation {
+    if !host
+        .presenter
+        .complete(generation, crate::util::reap_child_async)
+    {
         return;
-    }
-    host.presenter.source = None;
-    if let Some(child) = host.presenter.child.take() {
-        crate::util::reap_child_async(child);
     }
     // A D-Bus update can arrive before reconciliation cancels the old source.
     // Validate the model revision as well as the process generation.
@@ -162,63 +162,39 @@ fn finish(ctx: &mut WmCtx<'_>, generation: u64, presentation: TrayMenuPresentati
     // This prevents respawning the previous level while a submenu is loading.
 }
 
-fn instantmenu_command(count: i32, bar_height: i32) -> Command {
-    let mut command = Command::new(INSTANTMENU_BIN);
-    command
-        .arg("--position")
-        .arg("top-right")
-        .arg("--border-width")
-        .arg("3")
-        .arg("--lines")
-        .arg(count.to_string())
-        .arg("--width")
-        .arg(MENU_WIDTH.to_string())
-        // Open directly below a top bar, where the bar-native menu lives.
-        .arg("--y-offset")
-        .arg(bar_height.max(0).to_string())
-        // Follow keyboard focus: the tray menu opens on the selected output.
-        .arg("--monitor")
-        .arg("auto")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .process_group(0);
-    command
+fn instantmenu_command(count: u32, bar_height: i32) -> Command {
+    MenuOptions {
+        position: MenuPosition::TopRight,
+        border_width: 3,
+        insensitive: false,
+        reject_no_match: false,
+        lines: Some(count),
+        width: Some(MENU_WIDTH.to_string()),
+        // Anchor below the top bar on the keyboard-focused output.
+        y_offset: Some(bar_height.max(0)),
+        monitor: Some("auto".into()),
+        ..Default::default()
+    }
+    .command(INSTANTMENU_BIN)
 }
 
-/// One instantMENU input line per selectable entry; separators have no
-/// equivalent in a launcher list and are skipped. Each line carries
-/// `value=<index>` where index is the entry's position in `MenuView`, so
-/// instantMENU's output is the stable index rather than the display label.
-fn build_lines(view: &MenuView) -> Vec<String> {
+/// Values are indexes into the original view, including skipped separators.
+fn choices(view: &MenuView) -> Vec<MenuChoice> {
     view.entries
         .iter()
         .enumerate()
-        .filter_map(|(index, entry)| entry_line(index, entry))
+        .filter(|(_, entry)| !entry.separator)
+        .map(|(index, entry)| {
+            let mut choice = MenuChoice::item(index.to_string(), entry.display_label());
+            if !entry.enabled {
+                choice = choice.color(MenuColor::Fade);
+            }
+            if let Some(icon) = icon_for_entry(entry) {
+                choice = choice.icon(icon);
+            }
+            choice
+        })
         .collect()
-}
-
-fn entry_line(index: usize, entry: &MenuEntry) -> Option<String> {
-    if entry.separator {
-        return None;
-    }
-    let mut attrs = Vec::new();
-    if !entry.enabled {
-        attrs.push("fade".to_string());
-    }
-    if let Some(icon) = icon_for_entry(entry) {
-        attrs.push(format!("icon={icon}"));
-    }
-    // Stable unique output for robust selection (duplicate labels, markup chars).
-    // Index is integer, so no quoting needed; kept as bare value.
-    attrs.push(format!("value={index}"));
-    let mut line = String::new();
-    if !attrs.is_empty() {
-        line.push('{');
-        line.push_str(&attrs.join(" "));
-        line.push_str("} ");
-    }
-    line.push_str(&entry.display_label());
-    Some(line)
 }
 
 /// Keyword-to-icon mapping for entry labels, consulted in order. Every name
@@ -419,7 +395,7 @@ mod tests {
             entries: vec![entry("Open"), disabled, separator, entry("Settings")],
         };
 
-        let lines = build_lines(&view);
+        let lines: Vec<_> = choices(&view).iter().map(MenuChoice::to_line).collect();
         assert_eq!(lines.len(), 3, "separators produce no line");
 
         let expected = [
@@ -454,7 +430,7 @@ mod tests {
         let dup_view = MenuView {
             entries: vec![entry("Same"), entry("Same")],
         };
-        let dup_lines = build_lines(&dup_view);
+        let dup_lines: Vec<_> = choices(&dup_view).iter().map(MenuChoice::to_line).collect();
         assert_eq!(dup_lines.len(), 2);
         assert!(dup_lines[0].contains("value=0"));
         assert!(dup_lines[1].contains("value=1"));
@@ -479,7 +455,7 @@ mod tests {
         let view = MenuView {
             entries: vec![separator],
         };
-        assert!(build_lines(&view).is_empty());
+        assert!(choices(&view).is_empty());
     }
 
     #[test]
@@ -523,7 +499,7 @@ mod tests {
 
         // Validate numeric flags parse as numbers
         assert_eq!(
-            map.get("--lines").and_then(|v| v.parse::<i32>().ok()),
+            map.get("--lines").and_then(|v| v.parse::<u32>().ok()),
             Some(count)
         );
         assert_eq!(
@@ -549,6 +525,8 @@ mod lifecycle_tests {
     use super::*;
     use crate::systray::MenuToggle;
     use crate::test_support::TestWm;
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
     use std::time::Duration;
 
     fn view(label: &str) -> MenuView {
@@ -593,13 +571,13 @@ mod lifecycle_tests {
 
     fn present(wm: &mut TestWm, command: Command) {
         let presentation = wm.core.bar.systray_host.menu.presentation().unwrap();
-        let lines = build_lines(&presentation.view);
+        let choices = choices(&presentation.view);
         let height = wm.core.state.config.bar_metrics().height;
         start_menu(
             &mut wm.core.bar.systray_host.instantmenu,
             command,
             presentation,
-            lines,
+            menu_input(&choices),
             height,
         );
     }

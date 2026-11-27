@@ -7,6 +7,7 @@
 //! Shared rows/options and shortcut hints live here so every chooser formats
 //! instantMENU metadata the same way.
 
+use std::ffi::OsStr;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
@@ -14,6 +15,9 @@ use crate::actions::{KeyAction, NamedAction};
 use crate::contexts::WmCtx;
 use crate::menu_presenter::{self, MenuHost};
 use crate::types::{Key, Modifier, WindowId};
+
+pub(crate) const INSTANTMENU_BIN: &str = "instantmenu";
+pub(crate) const MAX_MENU_LABEL_CHARS: usize = 200;
 
 /// The chooser an open menu session belongs to.
 pub(crate) enum ActiveMenu {
@@ -50,7 +54,7 @@ impl MenuManager {
     }
 
     pub(crate) fn is_open(&self) -> bool {
-        self.host.child.is_some() || self.host.source.is_some()
+        self.host.is_open()
     }
 
     /// Start a session unless one is already showing. Repeated triggers must
@@ -65,20 +69,14 @@ impl MenuManager {
 
 /// Event-source callback for every chooser.
 pub(crate) fn finish(ctx: &mut WmCtx<'_>, generation: u64, session: ActiveMenu, answer: &str) {
-    let child = {
-        let host = &mut ctx.core_mut().menus.host;
-        if host.generation != generation {
-            return;
-        }
-        host.source = None;
-        host.child.take()
-    };
-    // Reaping is separate so process shutdown can never delay the callback.
-    if let Some(child) = child {
-        menu_presenter::finish_child(child);
+    if !ctx
+        .core_mut()
+        .menus
+        .host
+        .complete(generation, menu_presenter::finish_child)
+    {
+        return;
     }
-    // The borrow of the manager ends above: applying a choice may start
-    // another menu or otherwise re-enter the shared core.
     if let Err(error) = session.apply(ctx, answer) {
         log::warn!("menu selection: {error}");
     }
@@ -91,7 +89,6 @@ pub(crate) struct MenuChoice {
     icon: Option<&'static str>,
     color: Option<MenuColor>,
     shortcut: Option<String>,
-    heading: bool,
 }
 
 impl MenuChoice {
@@ -102,7 +99,6 @@ impl MenuChoice {
             icon: None,
             color: None,
             shortcut: None,
-            heading: false,
         }
     }
 
@@ -113,7 +109,6 @@ impl MenuChoice {
             icon: None,
             color: None,
             shortcut: None,
-            heading: true,
         }
     }
 
@@ -134,45 +129,30 @@ impl MenuChoice {
 
     pub(crate) fn to_line(&self) -> String {
         let mut line = String::from("{");
-        if self.heading {
-            // instantMENU skips headings during selection; they carry no value.
-            line.push_str("heading");
-            if let Some(color) = self.color {
+        let mut token = |key: &str, value: &str| {
+            if line.len() > 1 {
                 line.push(' ');
-                line.push_str(color.as_str());
             }
-            if let Some(icon) = self.icon {
-                line.push_str(" icon=");
-                line.push_str(icon);
-            }
-        } else {
-            if let Some(color) = self.color {
-                line.push_str(color.as_str());
-            }
-            if let Some(icon) = self.icon {
-                if line.len() > 1 {
-                    line.push(' ');
-                }
-                line.push_str("icon=");
-                line.push_str(icon);
-            }
-            if let Some(value) = &self.value {
-                if line.len() > 1 {
-                    line.push(' ');
-                }
-                line.push_str("value=");
-                line.push_str(value);
-            }
+            line.push_str(key);
+            line.push_str(value);
+        };
+        if self.value.is_none() {
+            token("", "heading");
+        }
+        if let Some(color) = self.color {
+            token("", color.as_str());
+        }
+        if let Some(icon) = self.icon {
+            token("icon=", icon);
+        }
+        if let Some(value) = &self.value {
+            token("value=", value);
             if let Some(shortcut) = &self.shortcut {
-                if line.len() > 1 {
-                    line.push(' ');
-                }
-                line.push_str("shortcut=");
-                line.push_str(shortcut);
+                token("shortcut=", shortcut);
             }
         }
         line.push_str("} ");
-        line.push_str(&sanitize_label(&self.label, 200));
+        line.push_str(&sanitize_label(&self.label, MAX_MENU_LABEL_CHARS));
         line
     }
 }
@@ -239,11 +219,14 @@ impl MenuPosition {
     }
 }
 
-/// Options shared by WM-owned choosers.
+/// Command-line options for instantMENU.
 pub(crate) struct MenuOptions {
     pub(crate) prompt: Option<String>,
     pub(crate) placeholder: Option<String>,
     pub(crate) position: MenuPosition,
+    pub(crate) border_width: u32,
+    pub(crate) insensitive: bool,
+    pub(crate) reject_no_match: bool,
     pub(crate) monitor: Option<String>,
     pub(crate) x_offset: Option<i32>,
     pub(crate) y_offset: Option<i32>,
@@ -263,6 +246,9 @@ impl Default for MenuOptions {
             prompt: None,
             placeholder: None,
             position: MenuPosition::Center,
+            border_width: 4,
+            insensitive: true,
+            reject_no_match: true,
             monitor: None,
             x_offset: None,
             y_offset: None,
@@ -276,55 +262,52 @@ impl Default for MenuOptions {
     }
 }
 
-/// A complete instantMENU invocation: options plus its input rows.
-pub(crate) struct MenuSpec {
-    pub(crate) options: MenuOptions,
-    pub(crate) choices: Vec<MenuChoice>,
-}
-
-impl MenuSpec {
-    pub(crate) fn command(&self) -> Command {
-        let options = &self.options;
-        let mut command = Command::new("instantmenu");
+impl MenuOptions {
+    pub(crate) fn command(&self, presenter: impl AsRef<OsStr>) -> Command {
+        let mut command = Command::new(presenter);
         command.args([
             "--border-width",
-            "4",
-            "--insensitive",
-            "--reject-no-match",
+            &self.border_width.to_string(),
             "--position",
-            options.position.as_str(),
+            self.position.as_str(),
         ]);
-        if let Some(prompt) = &options.prompt {
+        if self.insensitive {
+            command.arg("--insensitive");
+        }
+        if self.reject_no_match {
+            command.arg("--reject-no-match");
+        }
+        if let Some(prompt) = &self.prompt {
             command.args(["--prompt", prompt]);
         }
-        if let Some(placeholder) = &options.placeholder {
+        if let Some(placeholder) = &self.placeholder {
             command.args(["--placeholder", placeholder]);
         }
-        if let Some(monitor) = &options.monitor {
+        if let Some(monitor) = &self.monitor {
             command.args(["--monitor", monitor]);
         }
-        if let Some(offset) = options.x_offset {
+        if let Some(offset) = self.x_offset {
             command.args(["--x-offset", &offset.to_string()]);
         }
-        if let Some(offset) = options.y_offset {
+        if let Some(offset) = self.y_offset {
             command.args(["--y-offset", &offset.to_string()]);
         }
-        if let Some(width) = &options.width {
+        if let Some(width) = &self.width {
             command.args(["--width", width]);
         }
-        if let Some(line_height) = &options.line_height {
+        if let Some(line_height) = &self.line_height {
             command.args(["--line-height", line_height]);
         }
-        if let Some(columns) = options.columns {
+        if let Some(columns) = self.columns {
             command.args(["--columns", &columns.to_string()]);
         }
-        if let Some(lines) = options.lines {
+        if let Some(lines) = self.lines {
             command.args(["--lines", &lines.to_string()]);
         }
-        if options.alt_tab {
+        if self.alt_tab {
             command.arg("--alt-tab");
         }
-        if let Some(preselect) = &options.preselect {
+        if let Some(preselect) = &self.preselect {
             command.args(["--preselect", preselect]);
         }
         command
@@ -333,19 +316,31 @@ impl MenuSpec {
             .process_group(0);
         command
     }
+}
+
+/// A complete instantMENU invocation for a WM chooser.
+pub(crate) struct MenuSpec {
+    pub(crate) options: MenuOptions,
+    pub(crate) choices: Vec<MenuChoice>,
+}
+
+impl MenuSpec {
+    pub(crate) fn command(&self) -> Command {
+        self.options.command(INSTANTMENU_BIN)
+    }
 
     pub(crate) fn input(&self) -> String {
-        let mut input = self
-            .choices
-            .iter()
-            .map(MenuChoice::to_line)
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !input.is_empty() {
-            input.push('\n');
-        }
-        input
+        menu_input(&self.choices)
     }
+}
+
+pub(crate) fn menu_input(choices: &[MenuChoice]) -> String {
+    let mut input = String::new();
+    for choice in choices {
+        input.push_str(&choice.to_line());
+        input.push('\n');
+    }
+    input
 }
 
 /// Make untrusted text safe for one presenter row: no control characters, no
@@ -560,6 +555,7 @@ mod tests {
                 lines: Some(4),
                 alt_tab: true,
                 preselect: Some("2".into()),
+                ..Default::default()
             },
             choices: vec![MenuChoice::item("2", "Editor")],
         };
