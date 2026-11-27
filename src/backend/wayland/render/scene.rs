@@ -90,6 +90,8 @@ pub struct SceneCache {
     // The debug texture must stay reusable even while the bar is hidden or
     // its asynchronous renderer has an unfinished frame.
     insertion_overlay: Option<Rc<InsertionOverlay>>,
+    /// Stable border strip buffers, keyed by window and strip index.
+    border_buffers: crate::backend::wayland::render::borders::BorderBufferCache,
 }
 
 /// Capture shared scene pieces that do not depend on the target output.
@@ -138,7 +140,11 @@ pub fn build_shared_scene_elements(
         .filter(|(cached_bar, _, _)| *cached_bar == bar_seq && !bar_dirty)
         .map(|(_, _, elements)| elements.bar_buffers.clone());
     let bar_buffers = cached_bar_buffers.unwrap_or_else(|| Rc::new(build_bar_buffers(wm, state)));
-    let borders = border_scene.render(&wm.core.state.config.colors.border, layout_preview_color);
+    let borders = border_scene.render(
+        &wm.core.state.config.colors.border,
+        layout_preview_color,
+        &mut cache.border_buffers,
+    );
 
     let elements = Rc::new(SharedSceneElements {
         bar_buffers,

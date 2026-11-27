@@ -3,6 +3,8 @@
 //! Generates solid color render elements for window borders, handling
 //! z-order occlusion (borders behind windows are clipped).
 
+use std::collections::HashMap;
+
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::desktop::PopupManager;
@@ -134,8 +136,9 @@ impl BorderScene {
         &self,
         colors: &BorderColorConfig,
         close_color: crate::types::color::Rgba,
+        buffers: &mut BorderBufferCache,
     ) -> Vec<SolidColorRenderElement> {
-        render_border_scene(self, colors, close_color)
+        render_border_scene(self, colors, close_color, buffers)
     }
 }
 
@@ -333,11 +336,23 @@ fn visible_close_outline_parts(scene: &BorderScene, scratch: &mut Vec<Rect>) -> 
     apply_occluders(visible, scene.popup_occluders.iter().copied(), scratch)
 }
 
+/// Persistent per-window border buffers.
+///
+/// Border elements must keep their identity across frames. Recreating them
+/// with fresh [`smithay::backend::renderer::element::Id`] values makes every
+/// border strip look like a new element to the damage tracker, so one focused
+/// border change damages every strip on the output. Stable buffers update
+/// their commit counter only when a strip actually changes size or color.
+pub type BorderBufferCache = HashMap<(WindowId, u16), SolidColorBuffer>;
+
+const CLOSE_OUTLINE_KEY_BASE: u16 = 100;
+
 /// Render border elements from a previously captured displayed scene.
 fn render_border_scene(
     scene: &BorderScene,
     colors: &BorderColorConfig,
     close_color: crate::types::color::Rgba,
+    buffers: &mut BorderBufferCache,
 ) -> Vec<SolidColorRenderElement> {
     let windows = &scene.windows;
     let mut elements = Vec::new();
@@ -352,14 +367,31 @@ fn render_border_scene(
         let color = window.border_color(is_focused, colors);
 
         // Create render elements for visible border parts
-        for part in visible_parts {
-            push_solid(&mut elements, part, color);
+        for (part_idx, part) in visible_parts.into_iter().enumerate() {
+            let key = (window.id, part_idx as u16);
+            push_cached_solid(buffers, key, &mut elements, part, color);
         }
     }
 
-    for part in visible_close_outline_parts(scene, &mut scratch) {
-        push_solid(&mut elements, part, close_color);
+    let close_target = scene.close_outline_target;
+    for (part_idx, part) in visible_close_outline_parts(scene, &mut scratch)
+        .into_iter()
+        .enumerate()
+    {
+        if let Some(target) = close_target {
+            let key = (target, CLOSE_OUTLINE_KEY_BASE + part_idx as u16);
+            push_cached_solid(buffers, key, &mut elements, part, close_color);
+        }
     }
+
+    // Forget windows that no longer exist. Keys use a reserved high range for
+    // the close outline, so matching by window id covers all entries.
+    let mut live: std::collections::HashSet<WindowId> =
+        windows.iter().map(|window| window.id).collect();
+    if let Some(close_target) = close_target {
+        live.insert(close_target);
+    }
+    buffers.retain(|(id, _), _| live.contains(id));
 
     elements
 }
@@ -394,6 +426,30 @@ pub(super) fn push_solid(
     let buffer = SolidColorBuffer::new((rect.w, rect.h), color.into_array());
     out.push(SolidColorRenderElement::from_buffer(
         &buffer,
+        (rect.x, rect.y),
+        smithay::utils::Scale::from(1.0),
+        1.0,
+        Kind::Unspecified,
+    ));
+}
+
+/// Push a border strip backed by a persistent buffer.
+fn push_cached_solid(
+    buffers: &mut BorderBufferCache,
+    key: (WindowId, u16),
+    out: &mut Vec<SolidColorRenderElement>,
+    rect: Rect,
+    color: crate::types::color::Rgba,
+) {
+    if !rect.size().is_positive() {
+        return;
+    }
+    let buffer = buffers
+        .entry(key)
+        .or_insert_with(|| SolidColorBuffer::new((rect.w, rect.h), color.into_array()));
+    buffer.update((rect.w, rect.h), color.into_array());
+    out.push(SolidColorRenderElement::from_buffer(
+        buffer,
         (rect.x, rect.y),
         smithay::utils::Scale::from(1.0),
         1.0,
@@ -464,6 +520,54 @@ mod tests {
         assert_ne!(
             scene.cache_key(&first, Rgba::ZERO),
             scene.cache_key(&next, Rgba::ZERO)
+        );
+    }
+
+    #[test]
+    fn border_buffers_keep_identity_when_only_focus_color_changes() {
+        use smithay::backend::renderer::element::Element;
+
+        let colors = BorderColorConfig {
+            normal: Rgba::rgb(0.1, 0.1, 0.1),
+            tile_focus: Rgba::rgb(0.9, 0.9, 0.9),
+            ..BorderColorConfig::default()
+        };
+        let mut first = window_at(Rect::new(0, 0, 100, 100));
+        first.id = WindowId(1);
+        first.is_floating = false;
+        let mut second = window_at(Rect::new(200, 0, 100, 100));
+        second.id = WindowId(2);
+        second.is_floating = false;
+        let mut scene = BorderScene {
+            windows: vec![first, second],
+            popup_occluders: Vec::new(),
+            selected_win: None,
+            close_outline_target: None,
+        };
+        let mut buffers = BorderBufferCache::default();
+
+        let before = render_border_scene(&scene, &colors, Rgba::ZERO, &mut buffers);
+        let before_commits: Vec<_> = before
+            .iter()
+            .map(|element| element.current_commit())
+            .collect();
+        assert_eq!(before.len(), 8);
+
+        scene.selected_win = Some(WindowId(2));
+        let after = render_border_scene(&scene, &colors, Rgba::ZERO, &mut buffers);
+        let after_commits: Vec<_> = after
+            .iter()
+            .map(|element| element.current_commit())
+            .collect();
+
+        // The unfocused window keeps its buffer identity and commit.
+        assert_eq!(&before_commits[..4], &after_commits[..4]);
+        // Only the newly focused window's strips report a change.
+        assert!(
+            before_commits[4..]
+                .iter()
+                .zip(&after_commits[4..])
+                .all(|(before, after)| before != after)
         );
     }
 
