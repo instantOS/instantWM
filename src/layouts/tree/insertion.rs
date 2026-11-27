@@ -381,25 +381,6 @@ impl LayoutTree {
         best
     }
 
-    fn insert_new(
-        &mut self,
-        window: WindowId,
-        policy: NewWindowInsertion,
-        work_rect: Rect,
-        minimums: &HashMap<WindowId, Size>,
-    ) {
-        let Some(root) = self.root.take() else {
-            self.root = Some(Node::Window(window));
-            self.clear_insertion_provenance();
-            return;
-        };
-        if root.contains(window) {
-            self.root = Some(root);
-            return;
-        }
-        self.insert_absent(root, window, policy, work_rect, minimums);
-    }
-
     /// Insert a window the caller has proven absent from the tree.
     fn insert_new_absent(
         &mut self,
