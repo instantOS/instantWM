@@ -536,6 +536,9 @@ pub struct WmStatusInfo {
     pub monitors: usize,
     pub windows: usize,
     pub tags: usize,
+    /// Errors from the most recent startup or reload attempt. These cover
+    /// configuration loading and installation, not later backend sanitization.
+    pub config_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]

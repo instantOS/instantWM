@@ -1,6 +1,6 @@
 //! Backend-neutral Wayland WM initialization.
 
-use crate::config::load_startup_config;
+use crate::config::{StartupConfig, load_startup_config};
 use crate::core_state::CoreState;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,11 @@ use crate::core_state::CoreState;
 /// Output discovery replaces the fallback dimensions and establishes monitor
 /// geometry after the compositor backend is ready.
 pub fn init_wm_state(state: &mut CoreState) {
-    let cfg = load_startup_config(crate::backend::BackendKind::Wayland);
+    let StartupConfig {
+        config: cfg,
+        errors,
+    } = load_startup_config(crate::backend::BackendKind::Wayland);
+    state.config_errors = errors;
     state.derived.display.width = 1280;
     state.derived.display.height = 800;
     state

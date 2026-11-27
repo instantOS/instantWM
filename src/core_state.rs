@@ -406,6 +406,9 @@ pub struct CoreState {
     pub(crate) shortcuts: crate::shortcuts::Shortcuts,
     pub model: WmModel,
     pub config: EffectiveConfig,
+    /// Errors that prevented the most recent startup or reload configuration
+    /// from being installed. Later backend sanitizer warnings are not included.
+    pub config_errors: Vec<String>,
     pub derived: DerivedState,
     pub behavior: WmBehavior,
     pub interaction: InteractionState,

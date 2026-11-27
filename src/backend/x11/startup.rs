@@ -10,7 +10,7 @@ use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::x11::draw::{AllocScheme, BorderScheme, DrawContext};
-use crate::config::load_startup_config;
+use crate::config::{StartupConfig, load_startup_config};
 use crate::wm::X11Wm as Wm;
 
 const XC_LEFT_PTR: u32 = 68;
@@ -92,7 +92,11 @@ fn wm_init(wm: &mut Wm) {
 }
 
 fn init_wm_state(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Screen) {
-    let cfg = load_startup_config(BackendKind::X11);
+    let StartupConfig {
+        config: cfg,
+        errors,
+    } = load_startup_config(BackendKind::X11);
+    wm.core.state.config_errors = errors;
 
     // X11-specific runtime initialization
     wm.backend.x11_runtime.root = root;

@@ -39,6 +39,7 @@ pub fn get_status(core: &crate::core_state::WmCore, kind: crate::backend::Backen
         monitors: core.state.model.monitors.len(),
         windows: core.state.model.client_count(),
         tags: core.state.model.tags.num_tags,
+        config_errors: core.state.config_errors.clone(),
     };
 
     Response::Status(info)
@@ -48,6 +49,26 @@ pub fn get_status(core: &crate::core_state::WmCore, kind: crate::backend::Backen
 mod tests {
     use super::*;
     use crate::test_support::TestWm as Wm;
+
+    #[test]
+    fn status_reports_config_errors_from_core_state() {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        let backend = crate::backend::BackendKind::Wayland;
+
+        let Response::Status(status) = get_status(&wm.core, backend) else {
+            panic!("expected status response");
+        };
+        assert!(status.config_errors.is_empty());
+
+        wm.core.state.config_errors = vec![
+            "config parse error in config.toml: invalid value".to_string(),
+            "layout.inner_gap must be non-negative".to_string(),
+        ];
+        let Response::Status(status) = get_status(&wm.core, backend) else {
+            panic!("expected status response");
+        };
+        assert_eq!(status.config_errors, wm.core.state.config_errors);
+    }
 
     #[test]
     fn run_action_reports_parser_and_argument_errors() {

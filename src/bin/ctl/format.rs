@@ -392,14 +392,39 @@ fn format_layout_status(status: &LayoutStatusInfo) {
     println!("monitor: {}", status.monitor_id);
 }
 
+fn format_status_text(status: &WmStatusInfo) -> String {
+    let mut out = format!(
+        "instantWM {} ({})\nProtocol: {}\nCommit: {}\nRunning: {}\nMonitors: {}\nWindows: {}\nTags: {}\n",
+        status.version,
+        status.backend,
+        status.protocol_version,
+        status.build_commit,
+        status.running,
+        status.monitors,
+        status.windows,
+        status.tags,
+    );
+
+    if status.config_errors.is_empty() {
+        out.push_str("Config: OK\n");
+    } else {
+        out.push_str("Config: failed\n");
+        for error in &status.config_errors {
+            let mut lines = error.lines();
+            if let Some(first) = lines.next() {
+                out.push_str(&format!("  - {first}\n"));
+            }
+            for line in lines {
+                out.push_str(&format!("    {line}\n"));
+            }
+        }
+    }
+
+    out
+}
+
 fn format_status(status: &WmStatusInfo) {
-    println!("instantWM {} ({})", status.version, status.backend);
-    println!("Protocol: {}", status.protocol_version);
-    println!("Commit: {}", status.build_commit);
-    println!("Running: {}", status.running);
-    println!("Monitors: {}", status.monitors);
-    println!("Windows: {}", status.windows);
-    println!("Tags: {}", status.tags);
+    print!("{}", format_status_text(status));
 }
 
 fn format_keyboard_layout_list(layouts: &[KeyboardLayoutInfo]) {
@@ -556,6 +581,100 @@ mod tests {
     #[test]
     fn short_multibyte_title_is_unchanged() {
         assert_eq!(truncate_with_ellipsis("Plüma – Datei", 50), "Plüma – Datei");
+    }
+
+    #[test]
+    fn status_formatting_reports_healthy_config() {
+        use super::format_status_text;
+        use instantwm::ipc_types::WmStatusInfo;
+
+        let status = WmStatusInfo {
+            version: "0.9.0".to_string(),
+            protocol_version: "test".to_string(),
+            build_commit: "unknown".to_string(),
+            backend: "wayland".to_string(),
+            running: true,
+            monitors: 1,
+            windows: 9,
+            tags: 20,
+            config_errors: Vec::new(),
+        };
+
+        let text = format_status_text(&status);
+
+        assert!(text.contains("Config: OK\n"), "{text}");
+        assert!(!text.contains("Config: failed"), "{text}");
+    }
+
+    #[test]
+    fn status_formatting_lists_each_config_error_and_json_field() {
+        use super::{format_status_text, json_payload};
+        use instantwm::ipc_types::{Response, WmStatusInfo};
+
+        let status = WmStatusInfo {
+            version: "0.9.0".to_string(),
+            protocol_version: "test".to_string(),
+            build_commit: "unknown".to_string(),
+            backend: "wayland".to_string(),
+            running: true,
+            monitors: 1,
+            windows: 9,
+            tags: 20,
+            config_errors: vec![
+                "config parse error in config.toml".to_string(),
+                "layout.inner_gap must be non-negative".to_string(),
+            ],
+        };
+
+        let text = format_status_text(&status);
+
+        assert!(text.contains("Config: failed\n"), "{text}");
+        assert_eq!(text.matches("Config:").count(), 1, "{text}");
+        assert!(
+            text.contains("  - config parse error in config.toml\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  - layout.inner_gap must be non-negative\n"),
+            "{text}"
+        );
+
+        let json = json_payload(&Response::Status(status));
+        assert_eq!(
+            json["config_errors"],
+            serde_json::json!([
+                "config parse error in config.toml",
+                "layout.inner_gap must be non-negative"
+            ])
+        );
+    }
+
+    #[test]
+    fn status_formatting_indents_multiline_errors() {
+        use super::format_status_text;
+        use instantwm::ipc_types::WmStatusInfo;
+
+        let status = WmStatusInfo {
+            version: "0.9.0".to_string(),
+            protocol_version: "test".to_string(),
+            build_commit: "unknown".to_string(),
+            backend: "wayland".to_string(),
+            running: true,
+            monitors: 1,
+            windows: 9,
+            tags: 20,
+            config_errors: vec![
+                "config parse error in config.toml:\n  | bad line\n  | ^".to_string(),
+            ],
+        };
+
+        let text = format_status_text(&status);
+
+        assert!(text.contains("Config: failed\n"), "{text}");
+        assert!(
+            text.contains("  - config parse error in config.toml:\n      | bad line\n      | ^\n"),
+            "{text}"
+        );
     }
 
     #[test]
