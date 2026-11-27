@@ -340,6 +340,8 @@ impl Monitor {
 
     /// Tags currently projected on screen.
     ///
+    /// This answers which clients are visible, not which tag cells the bar
+    /// draws; bar cell selection also includes baseline and occupied tags.
     /// Overview is a presentation of every tag, not a workspace selection.
     /// Keeping this separate from [`Self::selected_tags`] prevents temporary
     /// overview state from leaking into launch placement, tag history, IPC,

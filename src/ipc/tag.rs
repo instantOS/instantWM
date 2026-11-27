@@ -19,7 +19,7 @@ fn list_tags(state: &crate::core_state::CoreState) -> Response {
     let monitor = core.model.expect_selected_monitor();
     let show_icons = core.config.tags.show_icons;
     let occupied = monitor.occupied_tags();
-    let selected = monitor.visible_tags();
+    let selected = monitor.selected_tags();
 
     let tags = monitor
         .tags
@@ -111,5 +111,25 @@ mod tests {
         let tags = wm.with_ctx(list);
         assert_eq!(tags[0].label, "W");
         assert_eq!(tags[1].label, "mail");
+    }
+
+    #[test]
+    fn list_reports_workspace_selection_while_overview_projects_every_tag() {
+        let mut wm = wm(false);
+        {
+            let monitor = wm.core.state.model.expect_selected_monitor_mut();
+            monitor.overview_state = Some(crate::overview::OverviewState::new(
+                TagMask::all(3),
+                Vec::new(),
+                std::collections::HashMap::new(),
+                None,
+            ));
+            assert_eq!(monitor.visible_tags(), TagMask::all(3));
+        }
+
+        let tags = wm.with_ctx(list);
+        assert!(!tags[0].selected);
+        assert!(tags[1].selected);
+        assert!(!tags[2].selected);
     }
 }

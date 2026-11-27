@@ -8,23 +8,23 @@ use crate::contexts::WmCtx;
 use crate::types::MAX_TAGS;
 use crate::types::tag::MAX_TAG_NAME_BYTES;
 
-/// Rename the currently visible tag(s) on the selected monitor.
+/// Rename the currently selected tag(s) on the selected monitor.
 ///
 /// An empty `arg` restores the configured label for each affected tag.
 /// Names longer than [`MAX_TAG_NAME_BYTES`] bytes are silently ignored.
 ///
 /// All tags included in the monitor's current tagset are renamed, so the
-/// function works correctly even when multiple tags are visible at once.
+/// function works correctly even when multiple tags are selected at once.
 pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     let state = &mut ctx.core_mut().state;
-    if !rename_visible_tags(&mut state.model, &state.config.tag_template, arg) {
+    if !rename_selected_tags(&mut state.model, &state.config.tag_template, arg) {
         return;
     }
     ctx.update_ewmh_desktop_props();
     ctx.core_mut().bar.invalidate_content();
 }
 
-fn rename_visible_tags(
+fn rename_selected_tags(
     model: &mut crate::model::WmModel,
     configured: &[crate::types::Tag],
     arg: &str,
@@ -37,7 +37,7 @@ fn rename_visible_tags(
     if tagset == 0 {
         return false;
     }
-    // Update the visible tags on every monitor, keeping session overrides in sync.
+    // Update the selected tags on every monitor, keeping session overrides in sync.
     for monitor in model.monitors.iter_all_mut() {
         for (index, tag) in monitor
             .tags
