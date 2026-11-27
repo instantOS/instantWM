@@ -34,6 +34,22 @@ impl Default for WmCore {
     }
 }
 impl WmCore {
+    /// Complete interaction presentation, including passive bar affordances.
+    ///
+    /// A captured interaction always owns the cursor. Otherwise a bar hover
+    /// target may request a cursor even though it is not a desktop
+    /// `HoverOffer` and therefore never enters `PointerInteractionState`.
+    pub fn interaction_projection(&self) -> crate::core_state::InteractionProjection {
+        let pointer = &self.state.interaction.pointer;
+        let mut projection = pointer.projection();
+        if !pointer.has_capture()
+            && let Some(cursor) = self.bar.hover.cursor()
+        {
+            projection.cursor = cursor;
+        }
+        projection
+    }
+
     /// Drain StatusNotifier worker events. Returns `true` when tray content
     /// changed and the bar must be redrawn.
     pub fn poll_systray(&mut self) -> bool {
@@ -155,5 +171,50 @@ impl WmCore {
             monitor.set_selected(selected);
             true
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core_state::InteractionSource;
+    use crate::types::{AltCursor, Gesture, MouseButton, Point};
+
+    #[test]
+    fn bar_resize_hover_projects_the_draw_cursor() {
+        let mut core = WmCore::default();
+        let monitor = MonitorId::from_raw(1);
+        let win = WindowId(7);
+
+        core.bar
+            .hover
+            .set(monitor, Gesture::ResizeWidget(win), false);
+        assert_eq!(core.interaction_projection().cursor, AltCursor::Crosshair);
+
+        core.bar.hover.set(monitor, Gesture::Tag(0), false);
+        assert_eq!(core.interaction_projection().cursor, AltCursor::Default);
+    }
+
+    #[test]
+    fn captured_interaction_cursor_wins_over_bar_hover() {
+        let mut core = WmCore::default();
+        let monitor = MonitorId::from_raw(1);
+        let win = WindowId(7);
+        core.bar
+            .hover
+            .set(monitor, Gesture::ResizeWidget(win), false);
+        core.state
+            .interaction
+            .pointer
+            .begin_move(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(0, 0),
+                Rect::new(0, 0, 100, 100),
+            )
+            .unwrap();
+
+        assert_eq!(core.interaction_projection().cursor, AltCursor::Move);
     }
 }

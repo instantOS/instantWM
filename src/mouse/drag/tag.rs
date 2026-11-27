@@ -220,11 +220,10 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             drag.last_tag = tag_idx;
         });
         if cursor_on_bar {
-            ctx.core_mut().bar.hover.set(monitor_id, gesture, true);
+            crate::bar::set_hover(ctx, monitor_id, gesture, true);
         } else {
-            ctx.core_mut().bar.hover.clear();
+            crate::bar::clear_hover(ctx);
         }
-        ctx.core_mut().bar.invalidate_content();
     }
     true
 }
@@ -295,14 +294,10 @@ fn finish_tag_release_presentation(
     // Leave the bar in its ordinary hover state. Clearing it unconditionally
     // causes a visible one-frame flash before the next pointer-motion event.
     if let Some(position) = final_position {
-        ctx.core_mut()
-            .bar
-            .hover
-            .set(drag.monitor_id, position.to_gesture(), false);
+        crate::bar::set_hover(ctx, drag.monitor_id, position.to_gesture(), false);
     } else {
-        ctx.core_mut().bar.hover.clear();
+        crate::bar::clear_hover(ctx);
     }
-    ctx.core_mut().bar.invalidate_content();
 }
 
 #[cfg(test)]

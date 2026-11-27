@@ -310,11 +310,7 @@ fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> b
     {
         return false;
     }
-    ctx.core_mut()
-        .bar
-        .hover
-        .set(monitor_id, Gesture::WinTitle(win), true);
-    ctx.core_mut().bar.invalidate_content();
+    crate::bar::set_hover(ctx, monitor_id, Gesture::WinTitle(win), true);
     true
 }
 
@@ -351,11 +347,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
             if target != win && crate::layouts::swap_bar_titles(ctx, monitor_id, win, target) {
                 // The swap moves the dragged title to a new cell; keep it
                 // highlighted there.
-                ctx.core_mut()
-                    .bar
-                    .hover
-                    .set(monitor_id, Gesture::WinTitle(win), true);
-                ctx.core_mut().bar.invalidate_content();
+                crate::bar::set_hover(ctx, monitor_id, Gesture::WinTitle(win), true);
             }
             true
         }
@@ -380,8 +372,7 @@ fn convert_reorder_to_move(
         // The window cannot start a move drag (e.g. an edge scratchpad); end
         // the interaction instead of leaving the capture dangling.
         ctx.transition_pointer_interaction(|pointer| pointer.finish_reordering());
-        ctx.core_mut().bar.hover.clear();
-        ctx.core_mut().bar.invalidate_content();
+        crate::bar::clear_hover(ctx);
         return false;
     };
     if ctx
@@ -394,8 +385,7 @@ fn convert_reorder_to_move(
     }
     // The reorder's gesture highlight no longer applies once the interaction
     // became an ordinary move drag; hover updates resume on the next motion.
-    ctx.core_mut().bar.hover.clear();
-    ctx.core_mut().bar.invalidate_content();
+    crate::bar::clear_hover(ctx);
     true
 }
 
@@ -421,14 +411,10 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
     // Leave the bar in its ordinary hover state. Clearing it unconditionally
     // causes a visible one-frame flash before the next pointer-motion event.
     if let Some(position) = position {
-        ctx.core_mut()
-            .bar
-            .hover
-            .set(monitor_id, position.to_gesture(), false);
+        crate::bar::set_hover(ctx, monitor_id, position.to_gesture(), false);
     } else {
-        ctx.core_mut().bar.hover.clear();
+        crate::bar::clear_hover(ctx);
     }
-    ctx.core_mut().bar.invalidate_content();
 }
 
 /// Finish a title drag interaction (button release without exceeding the

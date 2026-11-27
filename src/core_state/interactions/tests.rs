@@ -481,6 +481,16 @@ fn captured_interaction_cursor_tracks_internal_transitions() {
 }
 
 #[test]
+fn pending_region_selection_keeps_the_draw_cursor_until_the_tool_starts() {
+    let mut interactions = PointerInteractionState::default();
+    interactions
+        .arm_region_selection(WindowId(8), MouseButton::Left, InteractionSource::Pointer)
+        .unwrap();
+
+    assert_eq!(interactions.projection().cursor, AltCursor::Crosshair);
+}
+
+#[test]
 fn overview_close_threshold_drives_destructive_cursor() {
     let mut interactions = PointerInteractionState::default();
     interactions

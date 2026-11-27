@@ -92,6 +92,11 @@ impl BarHoverState {
             Gesture::None
         }
     }
+
+    /// Cursor required by the current hover target, if any.
+    pub fn cursor(self) -> Option<AltCursor> {
+        self.gesture.cursor()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -195,9 +200,32 @@ impl BarState {
     }
 }
 
+/// Update the bar hover target and reconcile the cursor derived from it.
+///
+/// Returns whether the paint-visible hover state changed.
+pub fn set_hover(
+    ctx: &mut WmCtx,
+    monitor_id: MonitorId,
+    gesture: Gesture,
+    drag_active: bool,
+) -> bool {
+    if !ctx
+        .core_mut()
+        .bar
+        .hover
+        .set(monitor_id, gesture, drag_active)
+    {
+        return false;
+    }
+    ctx.core_mut().bar.invalidate_content();
+    ctx.sync_interaction_projection();
+    true
+}
+
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core_mut().bar.hover.clear() {
         ctx.core_mut().bar.invalidate_content();
+        ctx.sync_interaction_projection();
     }
 }
 
@@ -268,8 +296,7 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        ctx.core_mut().bar.hover.clear();
-        ctx.core_mut().bar.invalidate_content();
+        clear_hover(ctx);
     }
 
     let gesture = if pos == BarPosition::StatusText && ctx.core().bar.runtime.status_click_events {
@@ -279,9 +306,7 @@ pub fn update_hover(
     } else {
         pos.to_gesture()
     };
-    if ctx.core_mut().bar.hover.set(monitor_id, gesture, false) {
-        ctx.core_mut().bar.invalidate_content();
-    }
+    set_hover(ctx, monitor_id, gesture, false);
 
     Some(pos)
 }

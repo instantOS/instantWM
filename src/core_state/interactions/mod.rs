@@ -169,9 +169,10 @@ impl CapturedInteraction {
             },
             Self::OverviewCard(drag) if drag.close_armed() => AltCursor::Close,
             Self::OverviewCard(_) => AltCursor::Move,
-            // The press is only transport ownership; nothing about the pending
-            // selection changes how the bar should be drawn.
-            Self::RegionSelection(_) => AltCursor::Default,
+            // The press is only transport ownership; the pending selection
+            // keeps the draw-a-rectangle cursor so it does not flicker back to
+            // the arrow between press and tool start.
+            Self::RegionSelection(_) => AltCursor::Crosshair,
         }
     }
 }
@@ -186,9 +187,12 @@ pub struct PointerInteractionState {
 }
 
 impl PointerInteractionState {
-    /// Derive the complete native presentation from authoritative interaction
-    /// state. A captured sequence always takes precedence over a passive hover
-    /// offer, so cursor policy cannot depend on imperative call ordering.
+    /// Derive the native presentation owned by pointer interactions.
+    ///
+    /// Passive bar hover is layered on top by
+    /// [`crate::core_state::WmCore::interaction_projection`]. A captured
+    /// sequence always takes precedence over a passive hover offer, so cursor
+    /// policy cannot depend on imperative call ordering.
     pub fn projection(&self) -> InteractionProjection {
         if let Some(capture) = self.capture.as_ref() {
             return InteractionProjection {

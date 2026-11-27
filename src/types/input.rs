@@ -90,6 +90,8 @@ pub enum AltCursor {
     Default,
     /// Move cursor.
     Move,
+    /// Crosshair, shown while pointing at a draw-a-rectangle target.
+    Crosshair,
     /// A value adjusted by dragging vertically.
     VerticalAdjust,
     /// A value adjusted by dragging horizontally.
@@ -112,6 +114,7 @@ impl AltCursor {
         match self {
             AltCursor::Default => 0,
             AltCursor::Move => 2,
+            AltCursor::Crosshair => 1,
             AltCursor::VerticalAdjust => 4,
             AltCursor::HorizontalAdjust => 5,
             AltCursor::Close => 1,
@@ -184,6 +187,7 @@ impl BarPosition {
             Self::StartMenu => Gesture::StartMenu,
             Self::Tag(idx) => Gesture::Tag(idx),
             Self::CloseButton(_) => Gesture::CloseButton,
+            Self::ResizeWidget(w) => Gesture::ResizeWidget(w),
             Self::WinTitle(w) => Gesture::WinTitle(w),
             Self::SystrayMenuItem(idx) => Gesture::TrayMenuEntry(idx),
             _ => Gesture::None,
@@ -206,6 +210,9 @@ pub enum Gesture {
     Tag(usize),
     /// Cursor is over the close button.
     CloseButton,
+    /// Cursor is over the draw-a-rectangle widget on the selected window's
+    /// title.
+    ResizeWidget(WindowId),
     /// Cursor is over the start-menu icon.
     StartMenu,
     /// Cursor is over a clickable i3bar block, identified by protocol order.
@@ -213,6 +220,20 @@ pub enum Gesture {
     /// Cursor is over an entry of the bar-hosted tray menu (0-based entry
     /// index).
     TrayMenuEntry(usize),
+}
+
+impl Gesture {
+    /// Cursor presentation for this passive hover target, if it has one.
+    ///
+    /// Most bar targets are intentionally left on the default cursor; the
+    /// draw-a-rectangle widget is the only invisible hit zone that cannot be
+    /// discovered from its rendering.
+    pub fn cursor(self) -> Option<AltCursor> {
+        match self {
+            Self::ResizeWidget(_) => Some(AltCursor::Crosshair),
+            _ => None,
+        }
+    }
 }
 
 /// Snap position for window snapping.
@@ -570,6 +591,21 @@ mod tests {
     #[test]
     fn close_cursor_is_destructive() {
         assert_eq!(AltCursor::Close.to_x11_index(), 1);
+    }
+
+    #[test]
+    fn resize_widget_hover_uses_the_crosshair_cursor() {
+        let gesture = super::BarPosition::ResizeWidget(super::WindowId(7)).to_gesture();
+
+        assert_eq!(gesture, super::Gesture::ResizeWidget(super::WindowId(7)));
+        assert_eq!(gesture.cursor(), Some(AltCursor::Crosshair));
+        assert_eq!(AltCursor::Crosshair.to_x11_index(), 1);
+    }
+
+    #[test]
+    fn ordinary_bar_hover_keeps_the_default_cursor() {
+        assert_eq!(super::Gesture::Tag(0).cursor(), None);
+        assert_eq!(super::Gesture::WinTitle(super::WindowId(7)).cursor(), None);
     }
 
     #[test]

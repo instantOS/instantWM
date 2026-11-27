@@ -353,6 +353,7 @@ fn wayland_cursor_icon(
     match style {
         crate::types::AltCursor::Default => None,
         crate::types::AltCursor::Move => Some(CursorIcon::Grabbing),
+        crate::types::AltCursor::Crosshair => Some(CursorIcon::Crosshair),
         crate::types::AltCursor::VerticalAdjust => Some(CursorIcon::NsResize),
         crate::types::AltCursor::HorizontalAdjust => Some(CursorIcon::EwResize),
         crate::types::AltCursor::Close => Some(CursorIcon::NotAllowed),
@@ -679,6 +680,10 @@ mod tests {
         assert_eq!(
             wayland_cursor_icon(AltCursor::Move),
             Some(CursorIcon::Grabbing)
+        );
+        assert_eq!(
+            wayland_cursor_icon(AltCursor::Crosshair),
+            Some(CursorIcon::Crosshair)
         );
         assert_eq!(
             wayland_cursor_icon(AltCursor::VerticalAdjust),

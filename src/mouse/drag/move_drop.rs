@@ -140,12 +140,9 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let was_on_bar = ctx.core().bar.hover.drag_active;
 
     if let Some((monitor_id, new_gesture)) = bar_hit {
-        if ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true) {
-            ctx.core_mut().bar.invalidate_content();
-        }
+        crate::bar::set_hover(ctx, monitor_id, new_gesture, true);
     } else if was_on_bar {
-        ctx.core_mut().bar.hover.clear();
-        ctx.core_mut().bar.invalidate_content();
+        crate::bar::clear_hover(ctx);
     }
 
     on_bar
@@ -155,7 +152,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
-    ctx.core_mut().bar.hover.clear();
+    crate::bar::clear_hover(ctx);
     ctx.core_mut().bar.invalidate_content();
 }
 
