@@ -426,6 +426,24 @@ impl Harness {
                 }
             }
             server_tick(&mut self.loop_, &mut self.state);
+
+            // A peer that stopped reading may never observe the server-side
+            // disconnect on its socket. The backend is authoritative: count
+            // and retire the client here so later actions cannot target a
+            // connection the compositor already closed.
+            let backend = self.state.native.display_handle.backend_handle();
+            for peer in self.peers.iter_mut().flatten() {
+                if peer.dead || backend.get_client_data(peer.server_id.clone()).is_ok() {
+                    continue;
+                }
+                assert!(
+                    peer.expected_error || peer.kill_ok,
+                    "{} was disconnected by the server without an expected error",
+                    peer.tag
+                );
+                peer.dead = true;
+                self.report.expected_disconnects += 1;
+            }
         }
         self.check_invariants();
     }
