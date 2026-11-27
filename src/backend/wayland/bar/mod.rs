@@ -69,7 +69,6 @@ impl WaylandBarRenderer {
 }
 
 /// Worker-local painter used to turn a bar snapshot into ARGB pixels.
-#[derive(Default)]
 struct BarRasterizer {
     text: TextRasterizer,
     measure_text: TextRasterizer,
@@ -77,6 +76,23 @@ struct BarRasterizer {
     scheme: Option<ColorScheme>,
     canvas: Canvas,
     surface_rect: Rect,
+}
+
+impl Default for BarRasterizer {
+    fn default() -> Self {
+        // Measurement stays at logical sizes while rasterization is scaled up.
+        // Both rasterizers must still share one discovered font database.
+        let text = TextRasterizer::default();
+        let measure_text = text.sharing_font_system();
+        Self {
+            text,
+            measure_text,
+            raster_scale: 0,
+            scheme: None,
+            canvas: Canvas::default(),
+            surface_rect: Rect::default(),
+        }
+    }
 }
 
 impl BarRasterizer {

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 use cosmic_text::{
     Attrs, Buffer, Color as CosmicColor, Family, FeatureTag, FontFeatures, FontSystem, Metrics,
@@ -177,7 +178,7 @@ impl RenderCache {
 }
 
 pub(super) struct TextRasterizer {
-    font_system: RefCell<FontSystem>,
+    font_system: Rc<RefCell<FontSystem>>,
     swash_cache: RefCell<SwashCache>,
     measure_cache: RefCell<MeasureCache>,
     render_cache: RefCell<RenderCache>,
@@ -189,13 +190,21 @@ pub(super) struct TextRasterizer {
 
 impl Default for TextRasterizer {
     fn default() -> Self {
-        let font_system = FontSystem::new();
+        Self::with_font_system(Rc::new(RefCell::new(FontSystem::new())))
+    }
+}
+
+impl TextRasterizer {
+    fn with_font_system(font_system: Rc<RefCell<FontSystem>>) -> Self {
         let configured = FontConfig::default();
         let mut resolved = configured.clone();
-        resolved.text_family = resolve_family(&font_system, &configured.text_family);
-        resolved.icon_family = resolve_family(&font_system, &configured.icon_family);
+        {
+            let fs = font_system.borrow();
+            resolved.text_family = resolve_family(&fs, &configured.text_family);
+            resolved.icon_family = resolve_family(&fs, &configured.icon_family);
+        }
         Self {
-            font_system: RefCell::new(font_system),
+            font_system,
             swash_cache: RefCell::new(SwashCache::new()),
             measure_cache: RefCell::new(MeasureCache::new()),
             render_cache: RefCell::new(RenderCache::new()),
@@ -210,9 +219,16 @@ impl Default for TextRasterizer {
             font_config_clock: 0,
         }
     }
-}
 
-impl TextRasterizer {
+    /// Build another rasterizer over the same discovered fonts.
+    ///
+    /// Measuring and rasterizing need different font sizes, but they must not
+    /// each load a `FontSystem`: cosmic-text's font database is expensive to
+    /// discover and is meant to be constructed once.
+    pub(super) fn sharing_font_system(&self) -> Self {
+        Self::with_font_system(Rc::clone(&self.font_system))
+    }
+
     pub(super) fn set_fonts(&mut self, configured: &FontConfig) {
         self.font_config_clock = self.font_config_clock.wrapping_add(1);
         if self.font_configs[self.active_font_config].configured == *configured {
@@ -451,6 +467,14 @@ mod tests {
     };
     use crate::core_state::FontConfig;
     use cosmic_text::Metrics;
+    use std::rc::Rc;
+
+    #[test]
+    fn rasterizers_share_the_discovered_font_system() {
+        let first = TextRasterizer::default();
+        let second = first.sharing_font_system();
+        assert!(Rc::ptr_eq(&first.font_system, &second.font_system));
+    }
 
     #[test]
     fn unchanged_configured_families_skip_resolution() {
