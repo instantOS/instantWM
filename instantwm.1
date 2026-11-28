@@ -228,6 +228,14 @@ action = { spawn = ["st"] }
 An entry with
 .B action = "none"
 removes the matching default binding instead of adding one.
+.PP
+The compiled desktop bindings can be removed wholesale by setting
+.B disable_default_desktop_keybinds = true
+at the top level of the config. Entries in
+.B [[desktop_keybinds]]
+are still applied, and
+.B [[keybinds]]
+and mode bindings are unaffected.
 
 .SS Modifiers
 Modifiers are named with exactly one spelling each, matched

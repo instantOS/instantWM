@@ -14,6 +14,14 @@
 //! modifiers = ["super"]
 //! key = "q"
 //! action = "none"                    # remove the default binding
+//!
+//! # Remove every compiled desktop binding, keeping the entries below.
+//! disable_default_desktop_keybinds = true
+//!
+//! [[desktop_keybinds]]
+//! modifiers = []
+//! key = "Return"
+//! action = "terminal"
 //! ```
 
 use std::collections::HashMap;

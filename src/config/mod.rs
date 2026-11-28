@@ -142,21 +142,26 @@ fn merge_configured_keybinds(
 /// (with its table and index) and returned as one error instead of being
 /// skipped, so a reload cannot silently install a partially bound config.
 pub fn resolve_config(
-    mut theme: config_toml::UserConfig,
+    mut user: config_toml::UserConfig,
     backend: crate::backend::BackendKind,
 ) -> Result<EffectiveConfig, String> {
-    let layout = theme.layout.validated()?;
-    theme.fonts = theme.fonts.validated()?;
+    let layout = user.layout.validated()?;
+    user.fonts = user.fonts.validated()?;
     let mut keybind_errors = Vec::new();
     let keys = merge_configured_keybinds(
         keybindings::default_keybinds(backend),
-        &theme.keybinds,
+        &user.keybinds,
         "keybinds",
         &mut keybind_errors,
     );
+    let desktop_defaults = if user.disable_default_desktop_keybinds {
+        Vec::new()
+    } else {
+        keybindings::get_desktop_keybinds()
+    };
     let desktop_keybinds = merge_configured_keybinds(
-        keybindings::get_desktop_keybinds(),
-        &theme.desktop_keybinds,
+        desktop_defaults,
+        &user.desktop_keybinds,
         "desktop_keybinds",
         &mut keybind_errors,
     );
@@ -195,7 +200,7 @@ pub fn resolve_config(
     modes.insert(
         "prefix".to_string(),
         merge_mode(
-            theme.modes.get("prefix"),
+            user.modes.get("prefix"),
             "prefix",
             true,
             Vec::new(),
@@ -207,7 +212,7 @@ pub fn resolve_config(
     modes.insert(
         "desktop".to_string(),
         merge_mode(
-            theme.modes.get("desktop"),
+            user.modes.get("desktop"),
             "desktop",
             false,
             Vec::new(),
@@ -217,8 +222,7 @@ pub fn resolve_config(
     );
 
     let mut placement_session_mode = merge_mode(
-        theme
-            .modes
+        user.modes
             .get(crate::core_state::PLACEMENT_SESSION_MODE_NAME),
         "place window",
         false,
@@ -235,7 +239,7 @@ pub fn resolve_config(
     );
 
     // Add all other user-defined modes
-    for (name, spec) in &theme.modes {
+    for (name, spec) in &user.modes {
         if name == "prefix"
             || name == "desktop"
             || name == crate::core_state::PLACEMENT_SESSION_MODE_NAME
@@ -262,17 +266,17 @@ pub fn resolve_config(
         return Err(keybind_errors.join("\n"));
     }
 
-    let bar = theme.bar.validated()?;
+    let bar = user.bar.validated()?;
     let window = WindowConfig {
         // The legacy top-level key and the `[window]` section are merged so
         // either spelling enables the opt-in behaviour.
-        raise_floating_on_click: theme.raise_floating_on_click
-            || theme.window.raise_floating_on_click,
-        ..theme.window
+        raise_floating_on_click: user.raise_floating_on_click
+            || user.window.raise_floating_on_click,
+        ..user.window
     }
     .validated()?;
-    let hooks = hooks::resolve_hooks(std::mem::take(&mut theme.hooks))?;
-    let mut keyboard = theme.keyboard;
+    let hooks = hooks::resolve_hooks(std::mem::take(&mut user.hooks))?;
+    let mut keyboard = user.keyboard;
     if keyboard.layouts.is_empty() {
         let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
         if layout.is_empty() {
@@ -293,38 +297,38 @@ pub fn resolve_config(
         .model
         .or_else(|| env::var("XKB_DEFAULT_MODEL").ok());
 
-    let tags = theme.tags.validated()?;
+    let tags = user.tags.validated()?;
     let tag_template = tags.tag_template();
-    for (output, entry) in &theme.monitors {
+    for (output, entry) in &user.monitors {
         entry.validated(output)?;
     }
 
     Ok(EffectiveConfig {
         window,
         bar,
-        systray: theme.systray,
+        systray: user.systray,
         tags,
         layout,
-        animations: theme.animations,
-        colors: theme.colors,
-        theme: theme.theme,
+        animations: user.animations,
+        colors: user.colors,
+        theme: user.theme,
         bindings: BindingConfig {
             keys,
             desktop_keybinds,
             modes,
             buttons: buttons::get_buttons(),
-            rules: rules::merge_rules(rules::get_rules(), theme.rules),
+            rules: rules::merge_rules(rules::get_rules(), user.rules),
         },
-        fonts: theme.fonts,
+        fonts: user.fonts,
         tag_template,
         keyboard,
-        input: theme.input,
-        monitors: theme.monitors,
-        status_command: theme.status_command,
-        cursor: theme.cursor,
-        focus: theme.focus,
-        exec_once: theme.exec_once,
-        exec: theme.exec,
+        input: user.input,
+        monitors: user.monitors,
+        status_command: user.status_command,
+        cursor: user.cursor,
+        focus: user.focus,
+        exec_once: user.exec_once,
+        exec: user.exec,
         hooks,
     })
 }
@@ -505,6 +509,57 @@ mod resolution_tests {
             &bound[0].action,
             KeyAction::Named(NamedAction::Spawn(argv)) if argv == &["alacritty"]
         ));
+    }
+
+    #[test]
+    fn default_desktop_keybinds_resolve_unless_disabled() {
+        let effective = resolve_config(
+            config_toml::UserConfig::default(),
+            crate::backend::BackendKind::X11,
+        )
+        .unwrap();
+
+        assert_eq!(
+            effective.bindings.desktop_keybinds.len(),
+            keybindings::get_desktop_keybinds().len()
+        );
+        assert!(
+            effective
+                .bindings
+                .desktop_keybinds
+                .iter()
+                .all(|key| key.origin == KeybindOrigin::CompiledDefault)
+        );
+    }
+
+    #[test]
+    fn disabling_default_desktop_keybinds_keeps_configured_ones() {
+        use crate::actions::{KeyAction, NamedAction};
+        use crate::config::keybind_config::{ActionSpec, KeybindSpec};
+        use crate::config::keybindings::MODKEY;
+        use crate::config::keysyms::XK_RETURN;
+
+        let mut user = config_toml::UserConfig::default();
+        user.disable_default_desktop_keybinds = true;
+        user.desktop_keybinds.push(KeybindSpec {
+            modifiers: vec!["super".to_string()],
+            key: "return".to_string(),
+            action: ActionSpec::Named("terminal".to_string()),
+        });
+
+        let effective = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
+
+        assert_eq!(effective.bindings.desktop_keybinds.len(), 1);
+        let key = &effective.bindings.desktop_keybinds[0];
+        assert_eq!(key.mod_mask, MODKEY);
+        assert_eq!(key.keysym, XK_RETURN);
+        assert_eq!(key.origin, KeybindOrigin::User);
+        assert!(matches!(
+            key.action,
+            KeyAction::Named(NamedAction::Terminal)
+        ));
+        // Ordinary keybinds are a separate table and keep their defaults.
+        assert!(!effective.bindings.keys.is_empty());
     }
 
     #[test]

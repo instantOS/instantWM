@@ -100,6 +100,13 @@ pub struct UserConfig {
     pub keybinds: Vec<KeybindSpec>,
     /// User-defined desktop keybinds (override/extend defaults).
     pub desktop_keybinds: Vec<KeybindSpec>,
+    /// Remove the compiled default desktop keybinds, keeping only entries from
+    /// `[[desktop_keybinds]]`.
+    ///
+    /// This opts out of the whole built-in desktop binding set without having
+    /// to unbind each chord individually. Ordinary `[[keybinds]]` and mode
+    /// bindings are unaffected.
+    pub disable_default_desktop_keybinds: bool,
     /// Keyboard layout configuration.
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
